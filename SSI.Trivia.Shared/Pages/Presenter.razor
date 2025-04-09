@@ -1,0 +1,71 @@
+﻿@page "/presenter"
+@using Microsoft.EntityFrameworkCore
+@using SSI.Trivia.Shared.DbContexts
+@using SSI.Trivia.Shared.Models
+@using SSI.Trivia.Shared.Components
+@inject TriviaDbContext DbContext
+
+<h1>Presenter</h1>
+
+<select @onchange="OnGameSelected">
+    <option value="">Select a game</option>
+    @foreach (var game in Games)
+    {
+        <option value="@game.Id">@game.Name</option>
+    }
+</select>
+
+@if (SelectedGame != null)
+{
+    <div>
+        <button @onclick="PreviousQuestion">Previous</button>
+        <button @onclick="NextQuestion">Next</button>
+    </div>
+
+    @if (CurrentQuestion != null)
+    {
+        <Slide Question="CurrentQuestion" />
+    }
+}
+
+@code {
+    private List<Game> Games { get; set; } = new();
+    private Game? SelectedGame { get; set; }
+    private Question? CurrentQuestion { get; set; }
+    private int CurrentQuestionIndex { get; set; } = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Games = await DbContext.Games.Include(g => g.Questions).ThenInclude(q => q.Answers).ToListAsync();
+    }
+
+    private void OnGameSelected(ChangeEventArgs e)
+    {
+        var gameId = int.Parse(e.Value?.ToString() ?? string.Empty);
+        SelectedGame = Games.FirstOrDefault(g => g.Id == gameId);
+        CurrentQuestionIndex = 0;
+        UpdateCurrentQuestion();
+    }
+
+    private void UpdateCurrentQuestion()
+    {
+        if (SelectedGame is { Questions.Count: > 0 })
+        {
+            CurrentQuestion = SelectedGame.Questions[CurrentQuestionIndex];
+        }
+    }
+
+    private void PreviousQuestion()
+    {
+        if (CurrentQuestionIndex <= 0) return;
+        CurrentQuestionIndex--;
+        UpdateCurrentQuestion();
+    }
+
+    private void NextQuestion()
+    {
+        if (SelectedGame == null || CurrentQuestionIndex >= SelectedGame.Questions.Count - 1) return;
+        CurrentQuestionIndex++;
+        UpdateCurrentQuestion();
+    }
+}

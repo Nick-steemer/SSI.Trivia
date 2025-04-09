@@ -1,0 +1,38 @@
+@using SSI.Trivia.Shared.Models
+
+<div class="slide">
+    <h2>@Question.QuestionText</h2>
+    
+    @if (!string.IsNullOrEmpty(Question.MediaUrl))
+    {
+        <img src="@Question.MediaUrl" alt="Question Media" />
+    }
+    else if (!string.IsNullOrEmpty(Question.UploadedMediaBase64))
+    {
+        <img src="data:image;base64,@Question.UploadedMediaBase64" alt="Question Media" />
+    }
+
+    @if (!Question.IsTieBreaker)
+    {
+        <ul>
+            @foreach (var answer in Question.Answers)
+            {
+                <li>@answer.Text</li>
+            }
+        </ul>
+    }
+
+    @if (!string.IsNullOrEmpty(Question.AfterMediaUrl))
+    {
+        <img src="@Question.AfterMediaUrl" alt="After Media" />
+    }
+    else if (!string.IsNullOrEmpty(Question.UploadedAfterMediaBase64))
+    {
+        <img src="data:image;base64,@Question.UploadedAfterMediaBase64" alt="After Media" />
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Question Question { get; set; }
+}

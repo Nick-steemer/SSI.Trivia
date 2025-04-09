@@ -1,13 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.13.35931.197 d17.13
+VisualStudioVersion = 17.13.35931.197
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SSI.Trivia", "SSI.Trivia\SSI.Trivia\SSI.Trivia.csproj", "{EAADC1FF-3C73-49B7-8058-E93EF64D4527}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SSI.Trivia", "SSI.Trivia\SSI.Trivia.csproj", "{EAADC1FF-3C73-49B7-8058-E93EF64D4527}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SSI.Trivia.Shared", "SSI.Trivia\SSI.Trivia.Shared\SSI.Trivia.Shared.csproj", "{D9F78E23-1821-4296-9AD6-EA24FA1EF84C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SSI.Trivia.Shared", "SSI.Trivia.Shared\SSI.Trivia.Shared.csproj", "{D9F78E23-1821-4296-9AD6-EA24FA1EF84C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SSI.Trivia.Web", "SSI.Trivia\SSI.Trivia.Web\SSI.Trivia.Web.csproj", "{675D85BC-5E94-4C52-8EFF-5A678F77FD60}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SSI.Trivia.Web", "SSI.Trivia.Web\SSI.Trivia.Web.csproj", "{675D85BC-5E94-4C52-8EFF-5A678F77FD60}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -17,6 +17,7 @@ Global
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{EAADC1FF-3C73-49B7-8058-E93EF64D4527}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{EAADC1FF-3C73-49B7-8058-E93EF64D4527}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EAADC1FF-3C73-49B7-8058-E93EF64D4527}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
 		{EAADC1FF-3C73-49B7-8058-E93EF64D4527}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EAADC1FF-3C73-49B7-8058-E93EF64D4527}.Release|Any CPU.Build.0 = Release|Any CPU
 		{D9F78E23-1821-4296-9AD6-EA24FA1EF84C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
