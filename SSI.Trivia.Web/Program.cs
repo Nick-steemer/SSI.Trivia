@@ -1,4 +1,6 @@
+using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
+using SSI.Trivia.Shared.DbContexts;
 using SSI.Trivia.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,6 +8,13 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddDbContext<TriviaDbContext>(options =>
+{
+    var dbPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "SSI.Trivia.Shared", "Trivia.db");
+    options.UseSqlite($"Filename={dbPath}");
+});
+
 builder.Services.AddMudServices();
 
 var app = builder.Build();
@@ -17,7 +26,6 @@ if (!app.Environment.IsDevelopment())
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
-
 app.UseHttpsRedirection();
 
 app.UseStaticFiles();
@@ -27,4 +35,4 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddAdditionalAssemblies(typeof(SSI.Trivia.Shared._Imports).Assembly);
 
-app.Run();
+await app.RunAsync();

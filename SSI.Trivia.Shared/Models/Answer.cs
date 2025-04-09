@@ -5,7 +5,8 @@ namespace SSI.Trivia.Shared.Models
     public class Answer
     {
         [Key]
-        public int Id { get; set; }
+        public Guid Id { get; set; } = Guid.NewGuid();
+        [MaxLength(100)]
         public string Text { get; set; } = string.Empty;
         public bool IsCorrect { get; set; } = false;
     }

@@ -1,38 +1,47 @@
 @using SSI.Trivia.Shared.Models
 
-<div class="slide">
-    <h2>@Question.QuestionText</h2>
-    
-    @if (!string.IsNullOrEmpty(Question.MediaUrl))
+<MudPaper Class="p-4">
+    @if (Question == null)
     {
-        <img src="@Question.MediaUrl" alt="Question Media" />
+        <MudText Color="Color.Error">No question data available.</MudText>
     }
-    else if (!string.IsNullOrEmpty(Question.UploadedMediaBase64))
+    else
     {
-        <img src="data:image;base64,@Question.UploadedMediaBase64" alt="Question Media" />
-    }
+        <MudText Typo="Typo.h4" Class="mb-3">@Question.QuestionText</MudText>
 
-    @if (!Question.IsTieBreaker)
-    {
-        <ul>
-            @foreach (var answer in Question.Answers)
-            {
-                <li>@answer.Text</li>
-            }
-        </ul>
-    }
+        @if (!string.IsNullOrEmpty(Question.MediaUrl))
+        {
+            <MudImage Src="@Question.MediaUrl" Alt="Question Media" Class="mb-3" Style="max-width:100%;" />
+        }
+        else if (!string.IsNullOrEmpty(Question.UploadedMediaBase64))
+        {
+            <MudImage Src="@($"data:image;base64,{Question.UploadedMediaBase64}")" Alt="Question Media" Class="mb-3" Style="max-width:100%;" />
+        }
 
-    @if (!string.IsNullOrEmpty(Question.AfterMediaUrl))
-    {
-        <img src="@Question.AfterMediaUrl" alt="After Media" />
+        @if (!Question.IsTieBreaker)
+        {
+            <MudList T="Answer" Class="mb-3">
+                @foreach (var answer in Question.Answers)
+                {
+                    <MudListItem>
+                        <MudText Typo="Typo.subtitle1">@answer.Text</MudText>
+                    </MudListItem>
+                }
+            </MudList>
+        }
+
+        @if (!string.IsNullOrEmpty(Question.AfterMediaUrl))
+        {
+            <MudImage Src="@Question.AfterMediaUrl" Alt="After Media" Class="mt-3" Style="max-width:100%;" />
+        }
+        else if (!string.IsNullOrEmpty(Question.UploadedAfterMediaBase64))
+        {
+            <MudImage Src="@($"data:image;base64,{Question.UploadedAfterMediaBase64}")" Alt="After Media" Class="mt-3" Style="max-width:100%;" />
+        }
     }
-    else if (!string.IsNullOrEmpty(Question.UploadedAfterMediaBase64))
-    {
-        <img src="data:image;base64,@Question.UploadedAfterMediaBase64" alt="After Media" />
-    }
-</div>
+</MudPaper>
 
 @code {
     [Parameter]
-    public Question Question { get; set; }
+    public Question? Question { get; set; }
 }

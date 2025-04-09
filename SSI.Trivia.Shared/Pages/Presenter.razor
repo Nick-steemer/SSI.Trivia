@@ -5,67 +5,140 @@
 @using SSI.Trivia.Shared.Components
 @inject TriviaDbContext DbContext
 
-<h1>Presenter</h1>
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudPaper Class="p-4">
+        <MudText Typo="Typo.h4" Class="mb-4">Presenter</MudText>
 
-<select @onchange="OnGameSelected">
-    <option value="">Select a game</option>
-    @foreach (var game in Games)
-    {
-        <option value="@game.Id">@game.Name</option>
-    }
-</select>
+        <MudStack Spacing="2">
+            <MudAutocomplete T="Sprint" Label="Select a Game"
+                             @bind-Value="SelectedGame"
+                             @bind-Value:after="OnGameSelected"
+                             ToStringFunc="(g) => g?.Name"
+                             SearchFunc="SearchGames"
+                             CoerceValue="true"
+                             Class="mb-4"
+                             @ref="_autocompleteRef"
+                             PopoverOptions="new MudPopoverOptions() {
+                     MaxHeight = MaxHeight.ExtraLarge,
+                     ZIndex = 2000
+                 }" />
 
-@if (SelectedGame != null)
-{
-    <div>
-        <button @onclick="PreviousQuestion">Previous</button>
-        <button @onclick="NextQuestion">Next</button>
-    </div>
+            @if (SelectedGame != null)
+            {
+                <MudPaper Class="p-2 mb-4">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" JustifyContent="SpaceBetween">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   OnClick="PreviousQuestion" Disabled="@IsFirstQuestion">
+                            <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" />
+                            Previous
+                        </MudButton>
 
-    @if (CurrentQuestion != null)
-    {
-        <Slide Question="CurrentQuestion" />
-    }
-}
+                        <MudText Typo="Typo.subtitle1">
+                            Question @CurrentQuestionNumber of @TotalQuestions
+                        </MudText>
+
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   OnClick="NextQuestion" Disabled="@IsLastQuestion">
+                            Next
+                            <MudIcon Icon="@Icons.Material.Filled.ChevronRight" />
+                        </MudButton>
+                    </MudStack>
+                </MudPaper>
+
+                @if (CurrentQuestion != null)
+                {
+                    <Slide Question="CurrentQuestion" />
+                }
+                else
+                {
+                    <MudText Typo="Typo.subtitle1" Color="Color.Secondary">
+                        No questions available.
+                    </MudText>
+                }
+            }
+        </MudStack>
+    </MudPaper>
+</MudContainer>
 
 @code {
-    private List<Game> Games { get; set; } = new();
-    private Game? SelectedGame { get; set; }
+    private List<Sprint> Games { get; set; } = new();
+    private Sprint? SelectedGame { get; set; }
     private Question? CurrentQuestion { get; set; }
     private int CurrentQuestionIndex { get; set; } = 0;
 
+    // Component reference for MudAutocomplete
+    private MudAutocomplete<Sprint>? _autocompleteRef;
+
     protected override async Task OnInitializedAsync()
     {
-        Games = await DbContext.Games.Include(g => g.Questions).ThenInclude(q => q.Answers).ToListAsync();
+        Games = await DbContext.Games
+            .Include(g => g.Questions.OrderBy(q => q.Id))
+                .ThenInclude(q => q.Answers)
+            .ToListAsync();
     }
 
-    private void OnGameSelected(ChangeEventArgs e)
+    private Task<IEnumerable<Sprint>> SearchGames(string value, CancellationToken cancellationToken)
     {
-        var gameId = int.Parse(e.Value?.ToString() ?? string.Empty);
-        SelectedGame = Games.FirstOrDefault(g => g.Id == gameId);
-        CurrentQuestionIndex = 0;
-        UpdateCurrentQuestion();
+        IEnumerable<Sprint> result;
+
+        if (string.IsNullOrEmpty(value))
+        {
+            result = Games;
+        }
+        else
+        {
+            result = Games.Where(g =>
+                g.Name.Contains(value, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return Task.FromResult(result);
+    }
+
+    private async Task OnGameSelected()
+    {
+        if (SelectedGame != null)
+        {
+            CurrentQuestionIndex = 0;
+            UpdateCurrentQuestion();
+
+            // Close the autocomplete dropdown
+            if (_autocompleteRef != null) await _autocompleteRef.CloseMenuAsync();
+        }
+        else
+        {
+            CurrentQuestion = null;
+        }
     }
 
     private void UpdateCurrentQuestion()
     {
-        if (SelectedGame is { Questions.Count: > 0 })
-        {
-            CurrentQuestion = SelectedGame.Questions[CurrentQuestionIndex];
-        }
+        CurrentQuestion = SelectedGame is { Questions.Count: > 0 } ? SelectedGame.Questions[CurrentQuestionIndex] : null;
     }
 
     private void PreviousQuestion()
     {
-        if (CurrentQuestionIndex <= 0) return;
-        CurrentQuestionIndex--;
-        UpdateCurrentQuestion();
+        if (CurrentQuestionIndex > 0)
+        {
+            CurrentQuestionIndex--;
+            UpdateCurrentQuestion();
+        }
     }
 
     private void NextQuestion()
     {
-        if (SelectedGame == null || CurrentQuestionIndex >= SelectedGame.Questions.Count - 1) return;
-        CurrentQuestionIndex++;
-        UpdateCurrentQuestion();
+        if (SelectedGame != null && CurrentQuestionIndex < SelectedGame.Questions.Count - 1)
+        {
+            CurrentQuestionIndex++;
+            UpdateCurrentQuestion();
+        }
     }
+
+    private bool IsFirstQuestion => CurrentQuestionIndex == 0;
+
+    private bool IsLastQuestion =>
+        SelectedGame != null && CurrentQuestionIndex >= SelectedGame.Questions.Count - 1;
+
+    private int CurrentQuestionNumber => CurrentQuestionIndex + 1;
+
+    private int TotalQuestions => SelectedGame?.Questions.Count ?? 0;
 }
