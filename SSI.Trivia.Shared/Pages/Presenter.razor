@@ -7,26 +7,27 @@
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
     <MudPaper Class="p-4">
-        <MudText Typo="Typo.h4" Class="mb-4">Presenter</MudText>
-
         <MudStack Spacing="2">
-            <MudAutocomplete T="Sprint" Label="Select a Game"
-                             @bind-Value="SelectedGame"
-                             @bind-Value:after="OnGameSelected"
-                             ToStringFunc="(g) => g?.Name"
-                             SearchFunc="SearchGames"
-                             CoerceValue="true"
-                             Class="mb-4"
-                             @ref="_autocompleteRef"
-                             PopoverOptions="new MudPopoverOptions() {
-                     MaxHeight = MaxHeight.ExtraLarge,
-                     ZIndex = 2000
-                 }" />
+            @if (SelectedGame == null)
+            {
+                <MudAutocomplete T="Sprint" Label="Select a Game"
+                                 @bind-Value="SelectedGame"
+                                 @bind-Value:after="OnGameSelected"
+                                 ToStringFunc="(g) => g?.Name"
+                                 SearchFunc="SearchGames"
+                                 CoerceValue="true"
+                                 Class="mb-4"
+                                 @ref="_autocompleteRef"
+                                 PopoverOptions="new MudPopoverOptions() {
+                         MaxHeight = MaxHeight.ExtraLarge,
+                         ZIndex = 2000
+                     }" />
+            }
 
             @if (SelectedGame != null)
             {
                 <MudPaper Class="p-2 mb-4">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" JustifyContent="SpaceBetween">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
                         <MudButton Variant="Variant.Filled" Color="Color.Primary"
                                    OnClick="PreviousQuestion" Disabled="@IsFirstQuestion">
                             <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" />

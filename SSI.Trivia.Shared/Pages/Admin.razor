@@ -1,6 +1,7 @@
 ﻿@page "/Admin"
 @using SSI.Trivia.Shared.DbContexts
 @using SSI.Trivia.Shared.Models
+@using SSI.Trivia.Shared.Components
 
 @inject TriviaDbContext DbContext
 
@@ -47,18 +48,19 @@
 
                                 @foreach (var answer in question.Answers)
                                 {
-                                    <div class="mb-2 d-flex align-items-center">
+                                    <div class="d-flex flex-grow-1 w-100">
                                         <MudTextField @bind-Value="answer.Text"
                                                       Variant="Variant.Outlined"
                                                       Placeholder="Enter answer text here..."
-                                                      Class="me-2 flex-grow-1" />
+                                                      Class="flex-grow-1" />
 
                                         <!-- Radio for each answer -->
                                         <MudRadio T="Guid"
                                                   Value="@(answer.Id)"
                                                   Color="Color.Primary"
-                                                  Ripple="false" 
-                                                  Label="Correct Answer"/>
+                                                  Ripple="false"
+                                                  Label="Correct Answer"
+                                                  Class="ms-3" />
                                     </div>
                                 }
                             </MudRadioGroup>
@@ -73,8 +75,25 @@
                                           Class="mb-3 w-100" />
                         }
 
-                        <!-- Existing fields for media and uploads -->
-                        <!-- ... -->
+                        <!-- Media Upload -->
+                        <MediaUpload Title="Upload Media (Image/Video)"
+                                     ButtonText="Upload Media"
+                                     InputId="@($"fileInput-{question.Id}")"
+                                     Color="Color.Primary"
+                                     AltText="Uploaded Media"
+                                     MediaBase64="@question.UploadedMediaBase64"
+                                     MediaName="@question.UploadedMediaName"
+                                     OnMediaUploaded="@(args => HandleMediaUpload(args, question, false))" />
+
+                        <!-- After Media Upload -->
+                        <MediaUpload Title="Upload After Media (Image/Video)"
+                                     ButtonText="Upload After Media"
+                                     InputId="@($"afterFileInput-{question.Id}")"
+                                     Color="Color.Secondary"
+                                     AltText="Uploaded After Media"
+                                     MediaBase64="@question.UploadedAfterMediaBase64"
+                                     MediaName="@question.UploadedAfterMediaName"
+                                     OnMediaUploaded="@(args => HandleMediaUpload(args, question, true))" />
                     </MudCardContent>
                 </MudCard>
             </MudItem>
@@ -105,17 +124,17 @@
         for (int i = 0; i < count; i++)
         {
             questions.Add(new Question
-            {
-                IsTieBreaker = false,
-                QuestionText = "",
-                Answers =
-                [
-                    new Answer(),
+                {
+                    IsTieBreaker = false,
+                    QuestionText = "",
+                    Answers =
+                    [
+                        new Answer(),
                     new Answer(),
                     new Answer(),
                     new Answer()
-                ]
-            });
+                    ]
+                });
         }
 
         // Add a default tie-breaker question
@@ -129,26 +148,17 @@
         return questions;
     }
 
-    private static async Task OnFileSelectedAsync(InputFileChangeEventArgs e, Question question, bool isAfterMedia)
+    private void HandleMediaUpload(MediaUploadEventArgs args, Question question, bool isAfterMedia)
     {
-        var file = e.File;
-        if (file != null)
+        if (!isAfterMedia)
         {
-            using MemoryStream ms = new();
-            await file.OpenReadStream(long.MaxValue).CopyToAsync(ms);
-            var fileBytes = ms.ToArray();
-            var base64 = Convert.ToBase64String(fileBytes);
-
-            if (!isAfterMedia)
-            {
-                question.UploadedMediaBase64 = base64;
-                question.UploadedMediaName = file.Name;
-            }
-            else
-            {
-                question.UploadedAfterMediaBase64 = base64;
-                question.UploadedAfterMediaName = file.Name;
-            }
+            question.UploadedMediaBase64 = args.Base64;
+            question.UploadedMediaName = args.FileName;
+        }
+        else
+        {
+            question.UploadedAfterMediaBase64 = args.Base64;
+            question.UploadedAfterMediaName = args.FileName;
         }
     }
 

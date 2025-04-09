@@ -1,0 +1,66 @@
+﻿@using Microsoft.AspNetCore.Components.Forms
+@using SSI.Trivia.Shared.Models
+
+<MudText Typo="Typo.subtitle1" Class="mt-3">@Title:</MudText>
+<div class="d-flex align-center">
+    <InputFile id="@InputId" OnChange="@HandleFileSelected" 
+              Accept="image/*,video/*" hidden />
+    <MudButton HtmlTag="label"
+               for="@InputId"
+               Variant="Variant.Filled"
+               Color="@Color"
+               StartIcon="@Icons.Material.Filled.CloudUpload"
+               Class="mb-3">
+        @ButtonText
+    </MudButton>
+    @if (!string.IsNullOrEmpty(MediaName))
+    {
+        <MudText Class="ml-3">@MediaName</MudText>
+    }
+</div>
+
+@if (!string.IsNullOrEmpty(MediaBase64))
+{
+    @if (MediaName.EndsWith(".mp4") || MediaName.EndsWith(".webm"))
+    {
+        <video controls class="w-100 mb-3">
+            <source src="data:video/mp4;base64,@MediaBase64" type="video/mp4" />
+            Your browser does not support the video tag.
+        </video>
+    }
+    else
+    {
+        <img src="data:image/png;base64,@MediaBase64" alt="@AltText" class="w-100 mb-3" />
+    }
+}
+
+@code {
+    [Parameter] public string Title { get; set; } = "Upload Media (Image/Video)";
+    [Parameter] public string ButtonText { get; set; } = "Upload Media";
+    [Parameter] public string InputId { get; set; } = Guid.NewGuid().ToString();
+    [Parameter] public Color Color { get; set; } = Color.Primary;
+    [Parameter] public string AltText { get; set; } = "Uploaded Media";
+    
+    [Parameter] public string? MediaBase64 { get; set; }
+    [Parameter] public string? MediaName { get; set; }
+    
+    [Parameter] public EventCallback<MediaUploadEventArgs> OnMediaUploaded { get; set; }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file != null)
+        {
+            using MemoryStream ms = new();
+            await file.OpenReadStream(long.MaxValue).CopyToAsync(ms);
+            var fileBytes = ms.ToArray();
+            var base64 = Convert.ToBase64String(fileBytes);
+
+            await OnMediaUploaded.InvokeAsync(new MediaUploadEventArgs
+            {
+                Base64 = base64,
+                FileName = file.Name
+            });
+        }
+    }
+}
