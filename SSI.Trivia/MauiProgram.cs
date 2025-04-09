@@ -1,6 +1,4 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging;
 using MudBlazor.Services;
 using SSI.Trivia.Shared.DbContexts;
@@ -21,7 +19,7 @@ public static class MauiProgram
 
         builder.Services.AddDbContext<TriviaDbContext>(options =>
         {
-            var dbPath = Path.Combine(FileSystem.AppDataDirectory, "Trivia.db");
+            var dbPath = Path.Combine(Directory.GetCurrentDirectory(), "Trivia.db");
             options.UseSqlite($"Filename={dbPath}");
         });
 
@@ -38,27 +36,8 @@ public static class MauiProgram
 
         using var scope = app.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<TriviaDbContext>();
-
-        AddMigrationIfNeeded(dbContext);
         dbContext.Database.Migrate();
 
         return app;
-    }
-
-    private static void AddMigrationIfNeeded(TriviaDbContext dbContext)
-    {
-        var migrator = dbContext.GetService<IMigrator>();
-        var migrationsAssembly = dbContext.GetService<IMigrationsAssembly>();
-
-        var appliedMigrations = dbContext.Database.GetAppliedMigrations().ToList();
-        var allMigrations = migrationsAssembly.Migrations.Keys.ToList();
-
-        var pendingMigrations = allMigrations.Except(appliedMigrations).ToList();
-
-        if (pendingMigrations.Count == 0) return;
-        foreach (var migration in pendingMigrations)
-        {
-            migrator.Migrate(migration);
-        }
     }
 }
