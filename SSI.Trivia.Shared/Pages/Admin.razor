@@ -18,18 +18,14 @@
         {
             <MudItem xs="12" sm="6">
                 <MudCard Class="mb-4" Outlined="true">
-                    <MudCardHeader>
-                        <MudText Typo="Typo.subtitle1">
-                            @if (question.IsTieBreaker)
-                            {
+                    @if (question.IsTieBreaker)
+                    {
+                        <MudCardHeader>
+                            <MudText Typo="Typo.subtitle1">
                                 <span style="color:green">Tie-Breaker</span>
-                            }
-                            else
-                            {
-                                @:Multiple Choice
-                            }
-                        </MudText>
-                    </MudCardHeader>
+                            </MudText>
+                        </MudCardHeader>
+                    }
                     <MudCardContent>
                         <!-- Question Text -->
                         <MudText Class="mb-1 fw-bold">Question Text:</MudText>
@@ -128,12 +124,12 @@
                     IsTieBreaker = false,
                     QuestionText = "",
                     Answers =
-                    [
-                        new Answer(),
+                        [
+                            new Answer(),
                     new Answer(),
                     new Answer(),
                     new Answer()
-                    ]
+                        ]
                 });
         }
 
