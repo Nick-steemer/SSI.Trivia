@@ -1,0 +1,47 @@
+@using SSI.Trivia.Shared.Models
+
+<MudPaper Class="p-4">
+    @if (Question == null)
+    {
+        <MudText Color="Color.Error">No question data available.</MudText>
+    }
+    else
+    {
+        <MudText Typo="Typo.h4" Class="mb-3">@Question.QuestionText</MudText>
+
+        @if (!string.IsNullOrEmpty(Question.MediaUrl))
+        {
+            <MudImage Src="@Question.MediaUrl" Alt="Question Media" Class="mb-3" Style="max-width:100%;" />
+        }
+        else if (!string.IsNullOrEmpty(Question.UploadedMediaBase64))
+        {
+            <MudImage Src="@($"data:image;base64,{Question.UploadedMediaBase64}")" Alt="Question Media" Class="mb-3" Style="max-width:100%;" />
+        }
+
+        @if (!Question.IsTieBreaker)
+        {
+            <MudList T="Answer" Class="mb-3">
+                @foreach (var answer in Question.Answers)
+                {
+                    <MudListItem>
+                        <MudText Typo="Typo.subtitle1">@answer.Text</MudText>
+                    </MudListItem>
+                }
+            </MudList>
+        }
+
+        @if (!string.IsNullOrEmpty(Question.AfterMediaUrl))
+        {
+            <MudImage Src="@Question.AfterMediaUrl" Alt="After Media" Class="mt-3" Style="max-width:100%;" />
+        }
+        else if (!string.IsNullOrEmpty(Question.UploadedAfterMediaBase64))
+        {
+            <MudImage Src="@($"data:image;base64,{Question.UploadedAfterMediaBase64}")" Alt="After Media" Class="mt-3" Style="max-width:100%;" />
+        }
+    }
+</MudPaper>
+
+@code {
+    [Parameter]
+    public Question? Question { get; set; }
+}

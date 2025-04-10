@@ -1,0 +1,180 @@
+﻿@page "/Admin"
+@using SSI.Trivia.Shared.DbContexts
+@using SSI.Trivia.Shared.Models
+@using SSI.Trivia.Shared.Components
+
+@inject TriviaDbContext DbContext
+
+<MudPaper Class="p-4" Elevation="0">
+    <MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-4">Manage Trivia</MudText>
+
+    <!-- Trivia Name -->
+    <MudText Typo="Typo.subtitle1" Class="fw-bold">Sprint Name:</MudText>
+    <MudTextField @bind-Value="_sprint.Name" Variant="Variant.Outlined" Class="mb-4 w-100" />
+
+    <!-- Questions List -->
+    <MudGrid Gutter="true">
+        @foreach (var question in _sprint.Questions)
+        {
+            <MudItem xs="12" sm="6">
+                <MudCard Class="mb-4" Outlined="true">
+                    <MudCardHeader>
+                        <MudText Typo="Typo.subtitle1">
+                            @if (question.IsTieBreaker)
+                            {
+                                <span style="color:green">Tie-Breaker</span>
+                            }
+                            else
+                            {
+                                @:Multiple Choice
+                            }
+                        </MudText>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <!-- Question Text -->
+                        <MudText Class="mb-1 fw-bold">Question Text:</MudText>
+                        <MudTextField @bind-Value="question.QuestionText"
+                                      Variant="Variant.Outlined"
+                                      Placeholder="Enter question text here..."
+                                      Class="mb-3 w-100" />
+
+                        <!-- Multiple-choice Answers -->
+                        @if (!question.IsTieBreaker)
+                        {
+                            <MudText Typo="Typo.subtitle1">Select the correct answer:</MudText>
+
+                            <!-- Single RadioGroup for the question -->
+                            <MudRadioGroup T="Guid" @bind-SelectedOption="question.CorrectAnswerId">
+
+                                @foreach (var answer in question.Answers)
+                                {
+                                    <div class="d-flex flex-grow-1 w-100">
+                                        <MudTextField @bind-Value="answer.Text"
+                                                      Variant="Variant.Outlined"
+                                                      Placeholder="Enter answer text here..."
+                                                      Class="flex-grow-1" />
+
+                                        <!-- Radio for each answer -->
+                                        <MudRadio T="Guid"
+                                                  Value="@(answer.Id)"
+                                                  Color="Color.Primary"
+                                                  Ripple="false"
+                                                  Label="Correct Answer"
+                                                  Class="ms-3" />
+                                    </div>
+                                }
+                            </MudRadioGroup>
+                        }
+                        else
+                        {
+                            <!-- Tie-Breaker Answer -->
+                            <MudText Class="mb-1 fw-bold">Tie-Breaker Answer:</MudText>
+                            <MudTextField @bind-Value="question.TieBreakerAnswer.Text"
+                                          Variant="Variant.Outlined"
+                                          Placeholder="Enter tie-breaker answer here..."
+                                          Class="mb-3 w-100" />
+                        }
+
+                        <!-- Media Upload -->
+                        <MediaUpload Title="Upload Media (Image/Video)"
+                                     ButtonText="Upload Media"
+                                     InputId="@($"fileInput-{question.Id}")"
+                                     Color="Color.Primary"
+                                     AltText="Uploaded Media"
+                                     MediaBase64="@question.UploadedMediaBase64"
+                                     MediaName="@question.UploadedMediaName"
+                                     OnMediaUploaded="@(args => HandleMediaUpload(args, question, false))" />
+
+                        <!-- After Media Upload -->
+                        <MediaUpload Title="Upload After Media (Image/Video)"
+                                     ButtonText="Upload After Media"
+                                     InputId="@($"afterFileInput-{question.Id}")"
+                                     Color="Color.Secondary"
+                                     AltText="Uploaded After Media"
+                                     MediaBase64="@question.UploadedAfterMediaBase64"
+                                     MediaName="@question.UploadedAfterMediaName"
+                                     OnMediaUploaded="@(args => HandleMediaUpload(args, question, true))" />
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+
+    </MudGrid>
+
+    <!-- Create Game Button -->
+    <MudButton Color="Color.Success" Variant="Variant.Filled" Class="mt-3"
+               OnClick="CreateGame">
+        Create Game
+    </MudButton>
+</MudPaper>
+
+@code {
+    private Sprint _sprint = new();
+
+    protected override void OnInitialized()
+    {
+        _sprint.Questions = InitializeQuestionsWithTieBreaker(5); // Initialize with 5 questions
+    }
+
+    private static List<Question> InitializeQuestionsWithTieBreaker(int count)
+    {
+        var questions = new List<Question>();
+
+        // Add multiple-choice questions
+        for (int i = 0; i < count; i++)
+        {
+            questions.Add(new Question
+                {
+                    IsTieBreaker = false,
+                    QuestionText = "",
+                    Answers =
+                    [
+                        new Answer(),
+                    new Answer(),
+                    new Answer(),
+                    new Answer()
+                    ]
+                });
+        }
+
+        // Add a default tie-breaker question
+        questions.Add(new Question
+            {
+                IsTieBreaker = true,
+                QuestionText = "",
+                TieBreakerAnswer = new Answer()
+            });
+
+        return questions;
+    }
+
+    private void HandleMediaUpload(MediaUploadEventArgs args, Question question, bool isAfterMedia)
+    {
+        if (!isAfterMedia)
+        {
+            question.UploadedMediaBase64 = args.Base64;
+            question.UploadedMediaName = args.FileName;
+        }
+        else
+        {
+            question.UploadedAfterMediaBase64 = args.Base64;
+            question.UploadedAfterMediaName = args.FileName;
+        }
+    }
+
+    private void CreateGame()
+    {
+        foreach (var question in _sprint.Questions)
+        {
+            if (question is { IsTieBreaker: false, CorrectAnswerId: not null })
+            {
+                foreach (var answer in question.Answers)
+                {
+                    answer.IsCorrect = answer.Id == question.CorrectAnswerId.Value;
+                }
+            }
+        }
+        DbContext.Games.Add(_sprint);
+        DbContext.SaveChanges();
+    }
+}

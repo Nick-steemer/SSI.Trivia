@@ -1,0 +1,23 @@
+﻿@page "/"
+
+<PageTitle>Home</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-6">
+    <MudPaper Elevation="5" Class="p-6">
+        <MudText Typo="Typo.h4" Align="Align.Center" Class="mb-4">
+            Are you setting up trivia, presenting, or participating?
+        </MudText>
+
+        <MudStack Spacing="3" Direction="Column" AlignItems="AlignItems.Center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/Admin" StartIcon="@Icons.Material.Filled.Settings">
+                Admin
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" Href="/Presenter" StartIcon="@Icons.Material.Filled.Slideshow">
+                Presenting
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Info" Href="/Participant" StartIcon="@Icons.Material.Filled.Person">
+                Participating
+            </MudButton>
+        </MudStack>
+    </MudPaper>
+</MudContainer>
