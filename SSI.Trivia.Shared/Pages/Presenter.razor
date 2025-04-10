@@ -8,13 +8,13 @@
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
     <MudPaper Class="p-4">
         <MudStack Spacing="2">
-            @if (SelectedGame == null)
+            @if (SelectedSprint == null)
             {
                 <MudAutocomplete T="Sprint" Label="Select a Game"
-                                 @bind-Value="SelectedGame"
+                                 @bind-Value="SelectedSprint"
                                  @bind-Value:after="OnGameSelected"
                                  ToStringFunc="(g) => g?.Name"
-                                 SearchFunc="SearchGames"
+                                 SearchFunc="SearchSprints"
                                  CoerceValue="true"
                                  Class="mb-4"
                                  @ref="_autocompleteRef"
@@ -24,37 +24,138 @@
                      }" />
             }
 
-            @if (SelectedGame != null)
+            @if (SelectedSprint != null)
             {
-                <MudPaper Class="p-2 mb-4">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                                   OnClick="PreviousQuestion" Disabled="@IsFirstQuestion">
-                            <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" />
-                            Previous
-                        </MudButton>
-
-                        <MudText Typo="Typo.subtitle1">
-                            Question @CurrentQuestionNumber of @TotalQuestions
-                        </MudText>
-
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                                   OnClick="NextQuestion" Disabled="@IsLastQuestion">
-                            Next
-                            <MudIcon Icon="@Icons.Material.Filled.ChevronRight" />
-                        </MudButton>
-                    </MudStack>
-                </MudPaper>
-
-                @if (CurrentQuestion != null)
+                @if (!IsReviewMode)
                 {
-                    <Slide Question="CurrentQuestion" />
+                    <MudPaper Class="p-2 mb-4">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                       OnClick="PreviousQuestion" Disabled="@IsFirstQuestion">
+                                <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" />
+                                Previous
+                            </MudButton>
+
+                            <MudText Typo="Typo.subtitle1">
+                                Question @CurrentQuestionNumber of @TotalQuestions
+                            </MudText>
+
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                       OnClick="NextQuestion" Disabled="@IsLastQuestion">
+                                Next
+                                <MudIcon Icon="@Icons.Material.Filled.ChevronRight" />
+                            </MudButton>
+                        </MudStack>
+                    </MudPaper>
+
+                    @if (CurrentQuestion != null)
+                    {
+                        <Slide Question="CurrentQuestion" />
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.subtitle1" Color="Color.Secondary">
+                            No questions available.
+                        </MudText>
+                    }
+
+                    @if (IsLastQuestion && CurrentQuestion != null)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Secondary" FullWidth="true"
+                                   OnClick="ShowReviewMode" Class="mt-4">
+                            Show Review
+                        </MudButton>
+                    }
                 }
                 else
                 {
-                    <MudText Typo="Typo.subtitle1" Color="Color.Secondary">
-                        No questions available.
-                    </MudText>
+                    <MudPaper Class="p-2 mb-4">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.h5">Game Review: @SelectedSprint.Name</MudText>
+                            <MudStack Row="true">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                           OnClick="ToggleShowCorrectAnswers">
+                                    @(ShowCorrectAnswers ? "Hide Correct Answers" : "Show Correct Answers")
+                                </MudButton>
+                                <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                                           OnClick="ToggleShowParticipantScores">
+                                    @(ShowParticipantScores ? "Hide Participant Scores" : "Show Participant Scores")
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Error"
+                                           OnClick="ExitReviewMode">
+                                    Exit Review
+                                </MudButton>
+                            </MudStack>
+                        </MudStack>
+                    </MudPaper>
+
+                    <MudStack>
+                        @foreach (var question in SelectedSprint.Questions)
+                        {
+                            <MudCard Class="mb-4">
+                                <MudCardHeader>
+                                    <MudText Typo="Typo.h5">Question #@(SelectedSprint.Questions.IndexOf(question) + 1)</MudText>
+                                </MudCardHeader>
+                                <MudCardContent>
+                                    <MudText Typo="Typo.body1" Class="mb-3">@question.QuestionText</MudText>
+
+                                    @if (!string.IsNullOrEmpty(question.MediaUrl) || !string.IsNullOrEmpty(question.UploadedMediaBase64))
+                                    {
+                                        <MudImage Src="@(string.IsNullOrEmpty(question.MediaUrl) ?
+                                                $"data:image;base64,{question.UploadedMediaBase64}" : question.MediaUrl)"
+                                                  Alt="Question Media" Class="mb-3" Style="max-width:100%;" />
+                                    }
+
+                                    @if (!question.IsTieBreaker)
+                                    {
+                                        <MudList T="Answer" Dense="true" DisablePadding="true">
+                                            @foreach (var answer in question.Answers)
+                                            {
+                                                <MudListItem>
+                                                    <MudStack Row="true" AlignItems="AlignItems.Center">
+                                                        @if (ShowCorrectAnswers && answer.IsCorrect)
+                                                        {
+                                                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle"
+                                                                     Color="Color.Success" Class="mr-2" />
+                                                        }
+                                                        <MudText Typo="Typo.body1"
+                                                                 Color="@(ShowCorrectAnswers && answer.IsCorrect ?
+                                                                         Color.Success : Color.Default)">
+                                                            @answer.Text
+                                                        </MudText>
+                                                    </MudStack>
+                                                </MudListItem>
+                                            }
+                                        </MudList>
+                                    }
+                                </MudCardContent>
+                            </MudCard>
+                        }
+                    </MudStack>
+
+                    @if (ShowParticipantScores)
+                    {
+                        <MudDivider Class="my-4" />
+                        <MudText Typo="Typo.h5" Class="mb-4">Participant Scores</MudText>
+                        <MudAlert Severity="Severity.Info">
+                            Participant scoring functionality will need to be implemented.
+                            This would typically involve retrieving player submissions from a database and calculating scores.
+                        </MudAlert>
+
+                        @* This section would display the participant scores once implemented *@
+                        @* Example implementation:
+                        <MudTable Items="@ParticipantScores" Hover="true" Dense="true">
+                            <HeaderContent>
+                                <MudTh>Participant</MudTh>
+                                <MudTh>Score</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.Name</MudTd>
+                                <MudTd>@context.Score</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                        *@
+                    }
                 }
             }
         </MudStack>
@@ -62,33 +163,43 @@
 </MudContainer>
 
 @code {
-    private List<Sprint> Games { get; set; } = new();
-    private Sprint? SelectedGame { get; set; }
+    private List<Sprint> Sprints { get; set; } = new();
+    private Sprint? SelectedSprint { get; set; }
     private Question? CurrentQuestion { get; set; }
     private int CurrentQuestionIndex { get; set; } = 0;
+
+    // Review mode states
+    private bool IsReviewMode { get; set; } = false;
+    private bool ShowCorrectAnswers { get; set; } = false;
+    private bool ShowParticipantScores { get; set; } = false;
 
     // Component reference for MudAutocomplete
     private MudAutocomplete<Sprint>? _autocompleteRef;
 
     protected override async Task OnInitializedAsync()
     {
-        Games = await DbContext.Games
-            .Include(g => g.Questions.OrderBy(q => q.Id))
-                .ThenInclude(q => q.Answers)
+        Sprints = await DbContext.Sprints
+            .Include(g => g.Questions)
+            .ThenInclude(q => q.Answers)
             .ToListAsync();
     }
 
-    private Task<IEnumerable<Sprint>> SearchGames(string value, CancellationToken cancellationToken)
+    private Task<IEnumerable<Sprint>> SearchSprints(string value, CancellationToken cancellationToken)
     {
+        if (!Sprints.Any())
+        {
+            return Task.FromResult(Enumerable.Empty<Sprint>());
+        }
+
         IEnumerable<Sprint> result;
 
         if (string.IsNullOrEmpty(value))
         {
-            result = Games;
+            result = Sprints;
         }
         else
         {
-            result = Games.Where(g =>
+            result = Sprints.Where(g =>
                 g.Name.Contains(value, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -97,10 +208,13 @@
 
     private async Task OnGameSelected()
     {
-        if (SelectedGame != null)
+        if (SelectedSprint != null)
         {
             CurrentQuestionIndex = 0;
             UpdateCurrentQuestion();
+            IsReviewMode = false;
+            ShowCorrectAnswers = false;
+            ShowParticipantScores = false;
 
             // Close the autocomplete dropdown
             if (_autocompleteRef != null) await _autocompleteRef.CloseMenuAsync();
@@ -113,7 +227,10 @@
 
     private void UpdateCurrentQuestion()
     {
-        CurrentQuestion = SelectedGame is { Questions.Count: > 0 } ? SelectedGame.Questions[CurrentQuestionIndex] : null;
+        // Added null check for SelectedGame and ensured there are Questions available
+        CurrentQuestion = SelectedSprint?.Questions is { Count: > 0 }
+            ? SelectedSprint.Questions[CurrentQuestionIndex]
+            : null;
     }
 
     private void PreviousQuestion()
@@ -127,19 +244,40 @@
 
     private void NextQuestion()
     {
-        if (SelectedGame != null && CurrentQuestionIndex < SelectedGame.Questions.Count - 1)
+        if (SelectedSprint is not null &&
+            CurrentQuestionIndex < SelectedSprint.Questions.Count - 1)
         {
             CurrentQuestionIndex++;
             UpdateCurrentQuestion();
         }
     }
 
+    private void ShowReviewMode()
+    {
+        IsReviewMode = true;
+    }
+
+    private void ExitReviewMode()
+    {
+        IsReviewMode = false;
+    }
+
+    private void ToggleShowCorrectAnswers()
+    {
+        ShowCorrectAnswers = !ShowCorrectAnswers;
+    }
+
+    private void ToggleShowParticipantScores()
+    {
+        ShowParticipantScores = !ShowParticipantScores;
+    }
+
     private bool IsFirstQuestion => CurrentQuestionIndex == 0;
 
     private bool IsLastQuestion =>
-        SelectedGame != null && CurrentQuestionIndex >= SelectedGame.Questions.Count - 1;
+        SelectedSprint?.Questions != null && CurrentQuestionIndex >= SelectedSprint.Questions.Count - 1;
 
     private int CurrentQuestionNumber => CurrentQuestionIndex + 1;
 
-    private int TotalQuestions => SelectedGame?.Questions.Count ?? 0;
+    private int TotalQuestions => SelectedSprint?.Questions?.Count ?? 0;
 }

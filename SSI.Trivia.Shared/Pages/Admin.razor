@@ -97,10 +97,9 @@
 
     </MudGrid>
 
-    <!-- Create Game Button -->
     <MudButton Color="Color.Success" Variant="Variant.Filled" Class="mt-3"
-               OnClick="CreateGame">
-        Create Game
+               OnClick="CreateSprint">
+        Create Sprint
     </MudButton>
 </MudPaper>
 
@@ -158,7 +157,7 @@
         }
     }
 
-    private void CreateGame()
+    private void CreateSprint()
     {
         foreach (var question in _sprint.Questions)
         {
@@ -170,7 +169,7 @@
                 }
             }
         }
-        DbContext.Games.Add(_sprint);
+        DbContext.Sprints.Add(_sprint);
         DbContext.SaveChanges();
     }
 }
