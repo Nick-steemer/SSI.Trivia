@@ -14,7 +14,7 @@
         <MudStack Spacing="2">
             @if (SelectedSprint == null)
             {
-                <MudAutocomplete T="Sprint" Label="Select a Game"
+                <MudAutocomplete T="Sprint" Label="Select a Sprint"
                                  @bind-Value="SelectedSprint"
                                  @bind-Value:after="OnSprintSelected"
                                  ToStringFunc="(g) => g?.Name"
@@ -53,17 +53,17 @@
                     </MudPaper>
 
                     <MudStack Class="mb-3">
-                        <MudButton Variant="@(IsGameActive ? Variant.Filled : Variant.Outlined)"
-                                   Color="@(IsGameActive ? Color.Error : Color.Success)"
+                        <MudButton Variant="@(IsSprintActive ? Variant.Filled : Variant.Outlined)"
+                                   Color="@(IsSprintActive ? Color.Error : Color.Success)"
                                    FullWidth="true"
-                                   OnClick="ToggleGameState">
-                            @(IsGameActive ? "End Game Session" : "Start Game Session")
+                                   OnClick="ToggleSprintState">
+                            @(IsSprintActive ? "End Trivia" : "Start Trivia")
                         </MudButton>
 
-                        @if (IsGameActive)
+                        @if (IsSprintActive)
                         {
                             <MudAlert Severity="Severity.Info" Class="mb-2">
-                                Game is active - participants can join and submit answers
+                                Sprint is active - participants can join and submit answers
                             </MudAlert>
                         }
                     </MudStack>
@@ -111,7 +111,7 @@
                 {
                     <MudPaper Class="p-2 mb-4">
                         <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-                            <MudText Typo="Typo.h5">Game Review: @SelectedSprint.Name</MudText>
+                            <MudText Typo="Typo.h5">Sprint Review: @SelectedSprint.Name</MudText>
                             <MudStack Row="true">
                                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
                                            OnClick="ToggleShowCorrectAnswers">
@@ -185,7 +185,7 @@
                         else if (ParticipantScores.Count == 0)
                         {
                             <MudAlert Severity="Severity.Info">
-                                No participant scores available for this game.
+                                No participant scores available for this sprint.
                             </MudAlert>
                         }
                         else
@@ -246,7 +246,7 @@
     private Question? CurrentQuestion { get; set; }
     private int CurrentQuestionIndex { get; set; } = 0;
     private HubConnection? hubConnection;
-    private bool IsGameActive { get; set; } = false;
+    private bool IsSprintActive { get; set; } = false;
     private bool IsLoading { get; set; } = false;
     private string SearchString { get; set; } = "";
 
@@ -306,7 +306,7 @@
             IsReviewMode = false;
             ShowCorrectAnswers = false;
             ShowParticipantScores = false;
-            IsGameActive = false;
+            IsSprintActive = false;
             ParticipantScores.Clear();
 
             if (_autocompleteRef != null) await _autocompleteRef.CloseMenuAsync();
@@ -331,7 +331,7 @@
             CurrentQuestionIndex--;
             UpdateCurrentQuestion();
 
-            if (IsGameActive && hubConnection != null)
+            if (IsSprintActive && hubConnection != null)
             {
                 await hubConnection.InvokeAsync("NavigateToQuestion", CurrentQuestionIndex);
             }
@@ -346,7 +346,7 @@
             CurrentQuestionIndex++;
             UpdateCurrentQuestion();
 
-            if (IsGameActive && hubConnection != null)
+            if (IsSprintActive && hubConnection != null)
             {
                 await hubConnection.InvokeAsync("NavigateToQuestion", CurrentQuestionIndex);
             }
@@ -469,18 +469,18 @@
         }
     }
 
-    private async Task ToggleGameState()
+    private async Task ToggleSprintState()
     {
         if (hubConnection == null || SelectedSprint == null) return;
 
-        if (!IsGameActive)
+        if (!IsSprintActive)
         {
-            IsGameActive = true;
+            IsSprintActive = true;
             await StartSprint(SelectedSprint);
         }
         else
         {
-            IsGameActive = false;
+            IsSprintActive = false;
             await EndSprint();
         }
     }
@@ -490,7 +490,7 @@
         if (hubConnection != null)
         {
             await hubConnection.InvokeAsync("StartSprint", sprint);
-            IsGameActive = true;
+            IsSprintActive = true;
         }
     }
 
@@ -499,7 +499,7 @@
         if (hubConnection != null)
         {
             await hubConnection.InvokeAsync("CloseSprint");
-            IsGameActive = false;
+            IsSprintActive = false;
         }
     }
 
@@ -552,27 +552,17 @@
         }
         else
         {
-            // No tie, game is over - show winner
             var winner = eligibleParticipants.FirstOrDefault();
 
             var parameters = new DialogParameters
         {
-            { "ContentText", $"Game over! The winner is {winner?.Name} with {highestScore} points. No tie-breaker needed!" },
+            { "ContentText", $"Trivia over! The winner is {winner?.Name} with {highestScore} points. No tie-breaker needed!" },
             { "ButtonText", "OK" },
             { "Color", Color.Success }
         };
 
             var dialogOptions = new DialogOptions() { CloseButton = true, MaxWidth = MaxWidth.Small };
-            await DialogService.ShowAsync<MessageDialog>("Game Result", parameters, dialogOptions);
-        }
-    }
-
-
-    private async Task SetTieBreakerEligibility(string connectionId, bool isEligible)
-    {
-        if (hubConnection != null)
-        {
-            await hubConnection.InvokeAsync("SetTieBreakerEligibility", connectionId, isEligible);
+            await DialogService.ShowAsync<MessageDialog>("Trivia Result", parameters, dialogOptions);
         }
     }
 
