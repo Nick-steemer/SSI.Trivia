@@ -18,6 +18,10 @@ builder.Services.AddDbContext<TriviaDbContext>(options =>
 builder.Services.AddSignalR();
 builder.Services.AddMudServices();
 
+#if DEBUG
+builder.Services.AddScoped(_ => new { IsDebugMode = true });
+#endif
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

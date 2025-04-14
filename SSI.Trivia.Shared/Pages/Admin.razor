@@ -2,8 +2,11 @@
 @using SSI.Trivia.Shared.DbContexts
 @using SSI.Trivia.Shared.Models
 @using SSI.Trivia.Shared.Components
+@using System.Diagnostics
 
 @inject TriviaDbContext DbContext
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
 
 <MudPaper Class="p-4" Elevation="0">
     <MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-4">Manage Trivia</MudText>
@@ -11,6 +14,12 @@
     <!-- Trivia Name -->
     <MudText Typo="Typo.subtitle1" Class="fw-bold">Sprint Name:</MudText>
     <MudTextField @bind-Value="_sprint.Name" Variant="Variant.Outlined" Class="mb-4 w-100" />
+
+    <!-- Debug Mode Button -->
+    @if (IsDebugMode)
+    {
+        <MudButton Color="Color.Info" Variant="Variant.Filled" Class="mb-4" OnClick="GenerateDebugQuestions"> Generate Debug Questions </MudButton>
+    }
 
     <!-- Questions List -->
     <MudGrid Gutter="true">
@@ -40,7 +49,9 @@
                             <MudText Typo="Typo.subtitle1">Select the correct answer:</MudText>
 
                             <!-- Single RadioGroup for the question -->
-                            <MudRadioGroup T="Guid" @bind-SelectedOption="question.CorrectAnswerId">
+                            <MudRadioGroup T="Guid"
+                                           @bind-SelectedOption="question.CorrectAnswerId"
+                                           ValueChanged="@(newValue => UpdateCorrectAnswer(question, newValue))">
 
                                 @foreach (var answer in question.Answers)
                                 {
@@ -105,6 +116,19 @@
 
 @code {
     private Sprint _sprint = new();
+    
+    // Property to check if we're in debug mode
+    private bool IsDebugMode
+    {
+        get
+        {
+#if DEBUG
+            return true;
+#else
+            return false;
+#endif
+        }
+    }
 
     protected override void OnInitialized()
     {
@@ -123,12 +147,12 @@
                     IsTieBreaker = false,
                     QuestionText = "",
                     Answers =
-                        [
-                            new Answer(),
+                            [
+                                new Answer(),
                     new Answer(),
                     new Answer(),
                     new Answer()
-                        ]
+                            ]
                 });
         }
 
@@ -157,19 +181,87 @@
         }
     }
 
+    private void UpdateCorrectAnswer(Question question, Guid selectedAnswerId)
+    {
+        question.CorrectAnswerId = selectedAnswerId;
+
+        // Update IsCorrect for all answers in this question
+        foreach (var answer in question.Answers)
+        {
+            answer.IsCorrect = answer.Id == selectedAnswerId;
+        }
+    }
+
     private void CreateSprint()
     {
-        foreach (var question in _sprint.Questions)
+        DbContext.Sprints.Add(_sprint);
+        DbContext.SaveChanges();
+
+        // Show toast notification
+        Snackbar.Add("Sprint created successfully!", Severity.Success, config =>
         {
-            if (question is { IsTieBreaker: false, CorrectAnswerId: not null })
+            config.RequireInteraction = false;
+            config.VisibleStateDuration = 10000; // 10 seconds
+        });
+
+        // Navigate to the home page
+        NavigationManager.NavigateTo("/");
+    }
+    
+    private void GenerateDebugQuestions()
+    {
+        _sprint.Name = $"Debug Sprint {DateTime.Now:yyyy-MM-dd HH:mm:ss}";
+        _sprint.Questions = InitializeQuestionsWithTieBreaker(5);
+        
+        // Define unique questions for regular questions
+        string[] questionTexts = 
+        {
+            "What is the primary purpose of dependency injection in software development?",
+            "Which design pattern is used to ensure a class has only one instance?",
+            "What is the main benefit of using async/await in C#?",
+            "Which data structure would be most efficient for frequent insertions and deletions?",
+            "What is the primary difference between REST and GraphQL?"
+        };
+        
+        // Four sets of unique answers corresponding to each question
+        string[][] answerSets = 
+        {
+            new[] { "To reduce coupling between components", "To increase code complexity", "To make testing more difficult", "To slow down application startup" },
+            new[] { "Singleton", "Factory", "Observer", "Decorator" },
+            new[] { "Improved UI responsiveness", "Reduced memory usage", "Faster execution", "Lower-level hardware access" },
+            new[] { "Linked List", "Array", "Hash Table", "Binary Tree" },
+            new[] { "REST returns fixed data structures while GraphQL returns only requested data", "REST is newer than GraphQL", "REST is stateful while GraphQL is stateless", "REST supports only XML while GraphQL supports only JSON" }
+        };
+        
+        // Correct answer indices (0-based) for each question
+        int[] correctAnswerIndices = { 0, 0, 0, 0, 0 };
+        
+        // Set up each regular question
+        for (int i = 0; i < 5; i++)
+        {
+            var question = _sprint.Questions[i];
+            question.QuestionText = questionTexts[i];
+            
+            // Set up each answer for this question
+            for (int j = 0; j < 4; j++)
             {
-                foreach (var answer in question.Answers)
+                var answer = question.Answers[j];
+                answer.Text = answerSets[i][j];
+                answer.IsCorrect = (j == correctAnswerIndices[i]);
+                
+                // Set the correct answer ID
+                if (answer.IsCorrect)
                 {
-                    answer.IsCorrect = answer.Id == question.CorrectAnswerId.Value;
+                    question.CorrectAnswerId = answer.Id;
                 }
             }
         }
-        DbContext.Sprints.Add(_sprint);
-        DbContext.SaveChanges();
+        
+        // Set up tie breaker question
+        var tieBreaker = _sprint.Questions.Last();
+        tieBreaker.QuestionText = "How many LLM models were publicly released in 2023?";
+        tieBreaker.TieBreakerAnswer.Text = "127";
+        
+        Snackbar.Add("Generated 5 unique questions with unique answers and a tie-breaker!", Severity.Info);
     }
 }
