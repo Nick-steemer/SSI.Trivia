@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
 using SSI.Trivia.Shared.DbContexts;
+using SSI.Trivia.Shared.Hubs;
 using SSI.Trivia.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,7 +15,7 @@ builder.Services.AddDbContext<TriviaDbContext>(options =>
     var dbPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "SSI.Trivia.Shared", "Trivia.db");
     options.UseSqlite($"Filename={dbPath}");
 });
-
+builder.Services.AddSignalR();
 builder.Services.AddMudServices();
 
 var app = builder.Build();
@@ -35,4 +36,5 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddAdditionalAssemblies(typeof(SSI.Trivia.Shared._Imports).Assembly);
 
+app.MapHub<TriviaHub>("/triviahub");
 await app.RunAsync();

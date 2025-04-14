@@ -22,7 +22,7 @@ public static class MauiProgram
             var dbPath = Path.Combine(Directory.GetCurrentDirectory(), "Trivia.db");
             options.UseSqlite($"Filename={dbPath}");
         });
-
+        builder.Services.AddSignalR();
         builder.Services.AddMauiBlazorWebView();
 
 #if DEBUG

@@ -1,7 +1,10 @@
 ﻿@page "/participant"
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.SignalR.Client
 @using SSI.Trivia.Shared.DbContexts
 @using SSI.Trivia.Shared.Components
+@using System.Threading.Tasks
+@implements IAsyncDisposable
 @inject TriviaDbContext DbContext
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
@@ -151,6 +154,8 @@
     private string NewParticipantName { get; set; } = string.Empty;
     private Models.RegistrationState RegistrationState { get; set; } = Models.RegistrationState.NotRegistered;
     private string ParticipantName => CurrentParticipant?.Name ?? NewParticipantName;
+    private HubConnection? _hubConnection;
+    public bool IsConnected => _hubConnection?.State == HubConnectionState.Connected;
 
     // Active game session
     private Models.Sprint? ActiveSprint { get; set; }
@@ -175,22 +180,25 @@
 
     private async Task InitializeSignalRConnection()
     {
-        // This would be implemented with SignalR connection to communicate with the presenter
-        // For now, we'll simulate this behavior for demonstration
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/triviahub"))
+            .WithAutomaticReconnect()
+            .Build();
 
-        // Example implementation using SignalR would be:
-        // hubConnection = new HubConnectionBuilder()
-        //     .WithUrl(NavigationManager.ToAbsoluteUri("/triviahub"))
-        //     .Build();
-        //
-        // hubConnection.On<Sprint>("StartSprint", (sprint) => {
-        //     ActiveSprint = sprint;
-        //     CurrentQuestionIndex = 0;
-        //     UpdateActiveQuestion();
-        //     StateHasChanged();
-        // });
-        //
-        // await hubConnection.StartAsync();
+        // Register SignalR event handlers
+        _hubConnection.On<Models.Sprint>("SprintStarted", OnSprintStarted);
+        _hubConnection.On<int>("QuestionChanged", OnQuestionChanged);
+        _hubConnection.On("SprintClosed", OnSprintClosed);
+        _hubConnection.On<bool>("TieBreakerEligibilityChanged", OnTieBreakerEligibilityChanged);
+
+        // Start the connection
+        await _hubConnection.StartAsync();
+    
+        // Join the participant group if we have a participant
+        if (CurrentParticipant != null)
+        {
+            await _hubConnection.InvokeAsync("JoinParticipantGroup", CurrentParticipant.Id);
+        }
     }
 
     private Task<IEnumerable<Models.Participant>> SearchParticipants(string value, CancellationToken token)
@@ -215,6 +223,12 @@
         }
 
         RegistrationState = Models.RegistrationState.Registered;
+    
+        // Join the participant group if we're connected
+        if (IsConnected && CurrentParticipant != null)
+        {
+            await _hubConnection!.InvokeAsync("JoinParticipantGroup", CurrentParticipant.Id);
+        }
     }
 
     private void ResetRegistration()
@@ -395,5 +409,13 @@
     {
         IsTieBreakerEligible = isEligible;
         await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection != null)
+        {
+            await _hubConnection.DisposeAsync();
+        }
     }
 }
