@@ -3,11 +3,13 @@
 @using Microsoft.AspNetCore.SignalR.Client
 @using SSI.Trivia.Shared.DbContexts
 @using SSI.Trivia.Shared.Components
+@using SSI.Trivia.Shared.Services
 @using System.Threading.Tasks
 @implements IAsyncDisposable
 @inject TriviaDbContext DbContext
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
+@inject AuthService AuthService
 
 <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
     <MudPaper Class="p-4">
@@ -15,6 +17,13 @@
             @if (RegistrationState == Models.RegistrationState.NotRegistered)
             {
                 <MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-4">Trivia Registration</MudText>
+                
+                @if (IsActiveDirectoryAuthenticated)
+                {
+                    <MudAlert Severity="Severity.Info" Class="mb-3">
+                        <MudText>Signed in as <strong>@ActiveDirectoryName</strong></MudText>
+                    </MudAlert>
+                }
 
                 <MudAutocomplete T="Models.Participant" Label="Your Name"
                                  @bind-Value="CurrentParticipant"
@@ -156,6 +165,10 @@
     private string ParticipantName => CurrentParticipant?.Name ?? NewParticipantName;
     private HubConnection? _hubConnection;
     public bool IsConnected => _hubConnection?.State == HubConnectionState.Connected;
+    
+    // Active Directory authentication properties
+    private bool IsActiveDirectoryAuthenticated { get; set; } = false;
+    private string? ActiveDirectoryName { get; set; }
 
     // Active game session
     private Models.Sprint? ActiveSprint { get; set; }
@@ -171,11 +184,43 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Check for Active Directory authentication
+        await CheckActiveDirectoryAuthentication();
+        
         // Load existing participants from database
         Participants = await DbContext.Participants.ToListAsync();
 
         // Set up SignalR connection to receive updates from presenter
         await InitializeSignalRConnection();
+    }
+
+    private async Task CheckActiveDirectoryAuthentication()
+    {
+        IsActiveDirectoryAuthenticated = await AuthService.IsUserAuthenticated();
+        if (IsActiveDirectoryAuthenticated)
+        {
+            // Get user name from Active Directory
+            ActiveDirectoryName = await AuthService.GetUserDisplayName();
+            
+            // Pre-populate the name field
+            if (!string.IsNullOrEmpty(ActiveDirectoryName))
+            {
+                // Check if this AD user has participated before
+                var existingParticipant = await DbContext.Participants
+                    .FirstOrDefaultAsync(p => p.Name.Equals(ActiveDirectoryName, StringComparison.OrdinalIgnoreCase));
+                
+                if (existingParticipant != null)
+                {
+                    // Use existing participant record
+                    CurrentParticipant = existingParticipant;
+                }
+                else
+                {
+                    // Pre-populate the name field for a new participant
+                    NewParticipantName = ActiveDirectoryName;
+                }
+            }
+        }
     }
 
     private async Task InitializeSignalRConnection()
