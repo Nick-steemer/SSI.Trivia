@@ -103,7 +103,7 @@
                                 @if (!string.IsNullOrEmpty(ActiveQuestion.MediaUrl) || !string.IsNullOrEmpty(ActiveQuestion.UploadedMediaBase64))
                                 {
                                     <MudImage Src="@(string.IsNullOrEmpty(ActiveQuestion.MediaUrl) ?
-                                              $"data:image;base64,{ActiveQuestion.UploadedMediaBase64}" : ActiveQuestion.MediaUrl)"
+                              $"data:image;base64,{ActiveQuestion.UploadedMediaBase64}" : ActiveQuestion.MediaUrl)"
                                               Alt="Question Media" Class="mb-3" Style="max-width:100%;" />
                                 }
 
@@ -133,8 +133,26 @@
                                         <MudTextField @bind-Value="TieBreakerAnswer"
                                                       Label="Your Answer"
                                                       Variant="Variant.Outlined"
-                                                      Disabled="@(SprintClosed)"
+                                                      Disabled="@(SprintClosed || TieBreakerSubmitted)"
                                                       Class="mt-3" />
+
+                                        @if (!TieBreakerSubmitted && !SprintClosed && IsTieBreakerEligible)
+                                        {
+                                            <MudButton Variant="Variant.Filled"
+                                                       Color="Color.Primary"
+                                                       FullWidth="true"
+                                                       OnClick="SubmitTieBreakerAnswer"
+                                                       Disabled="string.IsNullOrWhiteSpace(TieBreakerAnswer)"
+                                                       Class="mt-3">
+                                                Submit Tie-Breaker Answer
+                                            </MudButton>
+                                        }
+                                        else if (TieBreakerSubmitted)
+                                        {
+                                            <MudAlert Severity="Severity.Success" Class="mt-3">
+                                                Your answer has been submitted!
+                                            </MudAlert>
+                                        }
                                     }
                                 }
 
@@ -148,6 +166,7 @@
                         </MudCard>
                     </MudStack>
                 }
+
                 else
                 {
                     <MudAlert Severity="Severity.Info">
@@ -167,7 +186,8 @@
     private string ParticipantName => CurrentParticipant?.Name ?? NewParticipantName;
     private HubConnection? _hubConnection;
     public bool IsConnected => _hubConnection?.State == HubConnectionState.Connected;
-    
+    private bool TieBreakerSubmitted { get; set; } = false;
+
     // Active Directory authentication properties
     private bool IsActiveDirectoryAuthenticated { get; set; } = false;
     private string? ActiveDirectoryName { get; set; }
@@ -237,14 +257,19 @@
         _hubConnection.On<int>("QuestionChanged", OnQuestionChanged);
         _hubConnection.On("SprintClosed", OnSprintClosed);
         _hubConnection.On<bool>("TieBreakerEligibilityChanged", OnTieBreakerEligibilityChanged);
+        _hubConnection.On<Models.Sprint, int, bool>("CurrentGameState", OnCurrentGameState);
+        _hubConnection.On("TieBreakerAnswerSubmitted", OnTieBreakerAnswerSubmitted);
 
         // Start the connection
         await _hubConnection.StartAsync();
-    
+
         // Join the participant group if we have a participant
         if (CurrentParticipant != null)
         {
             await _hubConnection.InvokeAsync("JoinParticipantGroup", CurrentParticipant.Id);
+            
+            // Request the current game state in case we're joining a game in progress
+            await _hubConnection.InvokeAsync("RequestCurrentGameState", CurrentParticipant.Id);
         }
     }
 
@@ -275,6 +300,9 @@
         if (IsConnected && CurrentParticipant != null)
         {
             await _hubConnection!.InvokeAsync("JoinParticipantGroup", CurrentParticipant.Id);
+            
+            // Request the current game state if a game is in progress
+            await _hubConnection!.InvokeAsync("RequestCurrentGameState", CurrentParticipant.Id);
         }
     }
 
@@ -323,9 +351,9 @@
         }
     }
 
-    private void PreviousQuestion()
+    private async Task PreviousQuestion()
     {
-        SaveCurrentAnswer(); // Save the current answer before navigating
+        await SaveCurrentAnswer(); // Save the current answer before navigating
 
         if (CurrentQuestionIndex > 0)
         {
@@ -334,9 +362,9 @@
         }
     }
 
-    private void NextQuestion()
+    private async Task NextQuestion()
     {
-        SaveCurrentAnswer(); // Save the current answer before navigating
+        await SaveCurrentAnswer(); // Save the current answer before navigating
 
         if (ActiveSprint?.Questions != null && CurrentQuestionIndex < ActiveSprint.Questions.Count - 1)
         {
@@ -345,7 +373,7 @@
         }
     }
 
-    private void SaveCurrentAnswer()
+    private async Task SaveCurrentAnswer()
     {
         if (ActiveQuestion == null) return;
 
@@ -363,7 +391,7 @@
         }
 
         // Save to the database
-        SaveAnswerToDatabase();
+        await SaveAnswerToDatabase();
     }
 
     private async Task SaveAnswerToDatabase()
@@ -461,7 +489,7 @@
             questionIndex < ActiveSprint.Questions.Count)
         {
             // Save answer from current question before changing
-            SaveCurrentAnswer();
+            await SaveCurrentAnswer();
         
             // Update question index
             CurrentQuestionIndex = questionIndex;
@@ -482,6 +510,19 @@
     {
         IsTieBreakerEligible = isEligible;
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnCurrentGameState(Models.Sprint sprint, int currentQuestionIndex, bool isClosed)
+    {
+        if (sprint != null)
+        {
+            ActiveSprint = sprint;
+            SprintClosed = isClosed;
+            CurrentQuestionIndex = currentQuestionIndex;
+            await LoadSavedAnswers();
+            UpdateActiveQuestion();
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -534,4 +575,26 @@
         }
     }
 
+    private async Task SubmitTieBreakerAnswer()
+    {
+        if (ActiveQuestion?.IsTieBreaker == true && !string.IsNullOrWhiteSpace(TieBreakerAnswer) &&
+            CurrentParticipant != null && IsTieBreakerEligible && !TieBreakerSubmitted)
+        {
+            // Save to database first
+            await SaveCurrentAnswer();
+
+            // Send to SignalR hub
+            if (_hubConnection != null)
+            {
+                await _hubConnection.InvokeAsync("SubmitTieBreakerAnswer", CurrentParticipant.Id, TieBreakerAnswer);
+                TieBreakerSubmitted = true;
+            }
+        }
+    }
+
+    private async Task OnTieBreakerAnswerSubmitted()
+    {
+        TieBreakerSubmitted = true;
+        await InvokeAsync(StateHasChanged);
+    }
 }

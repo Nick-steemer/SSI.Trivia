@@ -93,18 +93,101 @@
                             </MudExpansionPanel>
                         }
                     }
-                    else if (CurrentQuestion?.IsTieBreaker == true && !ShowTieBreakerQuestion)
+                    @if (CurrentQuestion?.IsTieBreaker == true && ShowTieBreakerQuestion)
                     {
-                        <MudAlert Severity="Severity.Info" Class="mb-3">
-                            There's a tie-breaker question available. Click "Set Up Tie-Breaker" to determine if it's needed.
-                        </MudAlert>
-    
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                                   OnClick="SetupTieBreakerEligibility"
-                                   FullWidth="true" Class="mb-2">
-                            Set Up Tie-Breaker
-                        </MudButton>
+                        <Slide Question="CurrentQuestion" />
+
+                        <MudExpansionPanel Class="mt-3">
+                            <TitleContent>
+                                <MudText Typo="Typo.h6">Tie-Breaker Controls</MudText>
+                            </TitleContent>
+                            <ChildContent>
+                                <MudText Typo="Typo.body2" Class="mb-2">
+                                    Participants with the highest scores will automatically be eligible for the tie-breaker question.
+                                </MudText>
+
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                           OnClick="SetupTieBreakerEligibility"
+                                           Class="mb-2">
+                                    Set Up Tie-Breaker Eligibility
+                                </MudButton>
+
+                                @if (AllTieBreakerAnswersSubmitted)
+                                {
+                                    <MudDivider Class="my-3" />
+                                    <MudText Typo="Typo.body1" Class="mb-2">All eligible participants have submitted their tie-breaker answers!</MudText>
+
+                                    <MudStack>
+                                        <MudTextField @bind-Value="TieBreakerTargetValue"
+                                                      Label="Correct Answer"
+                                                      Variant="Variant.Outlined"
+                                                      Type="InputType.Number"
+                                                      Class="mb-2" />
+
+                                        <MudButton Variant="Variant.Filled"
+                                                   Color="Color.Primary"
+                                                   FullWidth="true"
+                                                   OnClick="ShowTieBreakerWinner"
+                                                   Disabled="string.IsNullOrWhiteSpace(TieBreakerTargetValue)">
+                                            Determine Winner
+                                        </MudButton>
+                                    </MudStack>
+                                }
+                                else
+                                {
+                                    <MudAlert Severity="Severity.Info" Class="mt-3">
+                                        Waiting for all eligible participants to submit their tie-breaker answers...
+                                    </MudAlert>
+                                }
+                            </ChildContent>
+                        </MudExpansionPanel>
+
+                        @if (ShowWinnerSection)
+                        {
+                            <MudCard Class="mt-4">
+                                <MudCardHeader>
+                                    <MudText Typo="Typo.h5">Tie-Breaker Results</MudText>
+                                </MudCardHeader>
+                                <MudCardContent>
+                                    <MudList T="TieBreakerResultViewModel">
+                                        @if (TieBreakerResults.Any())
+                                        {
+                                            <MudListItem>
+                                                <MudText Typo="Typo.h6">
+                                                    🏆 Winner: @TieBreakerResults.First().ParticipantName
+                                                </MudText>
+                                                <MudText Typo="Typo.body1" Class="mt-1">
+                                                    Answer: @TieBreakerResults.First().Answer (Closest without going over)
+                                                </MudText>
+                                            </MudListItem>
+
+                                            <MudDivider Class="my-3" />
+
+                                            <MudText Typo="Typo.subtitle1" Class="mb-2">All Answers</MudText>
+
+                                            @for (int i = 0; i < TieBreakerResults.Count; i++)
+                                            {
+                                                var result = TieBreakerResults[i];
+                                                <MudListItem>
+                                                    <MudText Typo="Typo.body1">
+                                                        @(i + 1). @result.ParticipantName: @result.Answer
+                                                    </MudText>
+                                                </MudListItem>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <MudText>No valid tie-breaker answers were submitted.</MudText>
+                                        }
+
+                                        <MudDivider Class="my-3" />
+                                        <MudText Typo="Typo.body2">Correct Answer: @TieBreakerTargetValue</MudText>
+                                    </MudList>
+                                </MudCardContent>
+                            </MudCard>
+                        }
                     }
+
                     else
                     {
                         <MudText Typo="Typo.subtitle1" Color="Color.Secondary">
@@ -270,6 +353,10 @@
     private bool ShowCorrectAnswers { get; set; } = false;
     private bool ShowParticipantScores { get; set; } = false;
     private bool ShowTieBreakerQuestion { get; set; } = false;
+    private bool AllTieBreakerAnswersSubmitted { get; set; } = false;
+    private string TieBreakerTargetValue { get; set; } = string.Empty;
+    private bool ShowWinnerSection { get; set; } = false;
+    private List<TieBreakerResultViewModel> TieBreakerResults { get; set; } = new();
 
     private List<ParticipantScoreViewModel> ParticipantScores { get; set; } = new();
 
@@ -284,7 +371,7 @@
                 .ThenInclude(q => q.Answers)
                 .ToListAsync();
 
-            var baseUrl = NavigationManager.BaseUri.Contains("0.0.0.1") 
+            var baseUrl = NavigationManager.BaseUri.Contains("0.0.0.1")
                 ? "https://localhost:7296" // Updated to match your actual HTTPS port
                 : NavigationManager.BaseUri;
 
@@ -292,6 +379,9 @@
                 .WithUrl($"{baseUrl.TrimEnd('/')}/triviahub")
                 .WithAutomaticReconnect()
                 .Build();
+
+            // Register for the AllTieBreakerAnswersSubmitted event
+            hubConnection.On("AllTieBreakerAnswersSubmitted", OnAllTieBreakerAnswersSubmitted);
 
             await hubConnection.StartAsync();
             await hubConnection.InvokeAsync("JoinPresenterGroup");
@@ -304,7 +394,7 @@
                 config.RequireInteraction = false;
                 config.VisibleStateDuration = 8000; // 8 seconds
             });
-            
+
             // Redirect to Admin page to create sprints
             NavigationManager.NavigateTo("/Admin");
         }
@@ -360,16 +450,16 @@
             CurrentQuestion = null;
             return;
         }
-        
+
         // Skip tie-breaker questions during normal navigation unless explicitly enabled
         var questions = SelectedSprint.Questions;
         if (CurrentQuestionIndex < questions.Count)
         {
             var question = questions[CurrentQuestionIndex];
-            
+
             // If this is a tie-breaker and we're not showing tie-breakers,
             // find the next non-tie-breaker question if available
-            if (question.IsTieBreaker && !ShowTieBreakerQuestion && 
+            if (question.IsTieBreaker && !ShowTieBreakerQuestion &&
                 CurrentQuestionIndex < questions.Count - 1)
             {
                 // Find next non-tie-breaker question
@@ -383,7 +473,7 @@
                     }
                 }
             }
-            
+
             CurrentQuestion = question;
         }
         else
@@ -602,7 +692,7 @@
 
             // Enable tie-breaker questions to be displayed
             ShowTieBreakerQuestion = true;
-            
+
             // Find and navigate to the tie-breaker question
             int tieBreakerIndex = SelectedSprint.Questions.FindIndex(q => q.IsTieBreaker);
             if (tieBreakerIndex >= 0)
@@ -657,4 +747,46 @@
     private int CurrentQuestionNumber => CurrentQuestionIndex + 1;
 
     private int TotalQuestions => SelectedSprint?.Questions?.Count ?? 0;
+
+    private async Task OnAllTieBreakerAnswersSubmitted()
+    {
+        AllTieBreakerAnswersSubmitted = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ShowTieBreakerWinner()
+    {
+        if (string.IsNullOrWhiteSpace(TieBreakerTargetValue) || !int.TryParse(TieBreakerTargetValue, out int targetValue))
+        {
+            // Show error message
+            Snackbar.Add("Please enter a valid number as the correct answer.", Severity.Error);
+            return;
+        }
+
+        // Call the hub to get tie-breaker results
+        if (hubConnection != null)
+        {
+            var results = await hubConnection.InvokeAsync<List<TieBreakerResult>>("GetTieBreakerResults", targetValue);
+
+            // Convert to view model and get participant names from DB
+            TieBreakerResults.Clear();
+
+            foreach (var result in results)
+            {
+                var participant = await DbContext.Participants.FirstOrDefaultAsync(p => p.Id == result.ParticipantId);
+                if (participant != null)
+                {
+                    TieBreakerResults.Add(new TieBreakerResultViewModel
+                        {
+                            ParticipantId = result.ParticipantId,
+                            ParticipantName = participant.Name,
+                            Answer = result.Answer
+                        });
+                }
+            }
+
+            ShowWinnerSection = true;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
 }

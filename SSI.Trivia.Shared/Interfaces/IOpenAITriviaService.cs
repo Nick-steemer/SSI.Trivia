@@ -1,4 +1,4 @@
-﻿using SSI.Trivia.Shared.Services;
+﻿using SSI.Trivia.Shared.Models.GenerationModels;
 
 namespace SSI.Trivia.Shared.Interfaces;
 

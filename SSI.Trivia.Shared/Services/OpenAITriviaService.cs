@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using SSI.Trivia.Shared.Configuration;
 using SSI.Trivia.Shared.Interfaces;
+using SSI.Trivia.Shared.Models.GenerationModels;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -48,7 +49,8 @@ public class OpenAITriviaService : IOpenAITriviaService
     private string CreateTriviaPrompt(string category, int questionCount, bool includeTieBreaker)
     {
         var prompt = $@"Generate {questionCount} engaging trivia questions about {category} with 4 multiple-choice answers each. 
-For each question, clearly indicate which answer is correct.
+For each question, clearly indicate which answer is correct. 
+For the answers make sure the correct answers are spaced out randomly between all 4 options.
 
 ";
 
@@ -84,30 +86,7 @@ For this tie-breaker, provide the exact numerical answer.
 
     private TriviaGenerationResult ParseTriviaResponse(string response)
     {
-        try
-        {
-            // Extract JSON from the response (in case there's any surrounding text)
-            int startIndex = response.IndexOf('{');
-            int endIndex = response.LastIndexOf('}') + 1;
-
-            if (startIndex >= 0 && endIndex > startIndex)
-            {
-                string jsonText = response.Substring(startIndex, endIndex - startIndex);
-                return JsonSerializer.Deserialize<TriviaGenerationResult>(jsonText, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            }
-
-            return new TriviaGenerationResult
-            {
-                Error = "Could not parse response as JSON"
-            };
-        }
-        catch (Exception ex)
-        {
-            return new TriviaGenerationResult
-            {
-                Error = $"Error parsing response: {ex.Message}"
-            };
-        }
+        return JsonParserService.ParseTriviaJson(response);
     }
 }
 
@@ -124,29 +103,4 @@ public class OpenAIResponse
     {
         public string content { get; set; }
     }
-}
-
-public class TriviaGenerationResult
-{
-    public List<TriviaQuestionItem> Questions { get; set; } = new();
-    public TieBreakerItem TieBreaker { get; set; }
-    public string Error { get; set; }
-}
-
-public class TriviaQuestionItem
-{
-    public string QuestionText { get; set; }
-    public List<TriviaAnswerItem> Answers { get; set; } = new();
-}
-
-public class TriviaAnswerItem
-{
-    public string Text { get; set; }
-    public bool IsCorrect { get; set; }
-}
-
-public class TieBreakerItem
-{
-    public string QuestionText { get; set; }
-    public string Answer { get; set; }
 }
