@@ -1,15 +1,68 @@
 ﻿@page "/Admin"
+@using System.Diagnostics
+@using Microsoft.EntityFrameworkCore
 @using SSI.Trivia.Shared.DbContexts
 @using SSI.Trivia.Shared.Models
 @using SSI.Trivia.Shared.Components
-@using System.Diagnostics
+@using SSI.Trivia.Shared.Interfaces
 
 @inject TriviaDbContext DbContext
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
+@inject IOpenAITriviaService TriviaService
 
 <MudPaper Class="p-4" Elevation="0">
     <MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-4">Manage Trivia</MudText>
+
+    <!-- AI Trivia Generation -->
+    <MudExpansionPanel Class="mb-4">
+        <TitleContent>
+            <MudText Typo="Typo.h6">Generate Trivia with AI</MudText>
+        </TitleContent>
+        <ChildContent>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="TriviaCategory" 
+                                 Label="Category" 
+                                 Placeholder="Random, Sports, History, Science, etc." 
+                                 Variant="Variant.Outlined" 
+                                 Class="mb-3" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="TriviaQuestionCount" 
+                                    Label="Number of Questions" 
+                                    Min="1" Max="10" 
+                                    Variant="Variant.Outlined" 
+                                    Class="mb-3" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudSwitch @bind-Value="IncludeTieBreaker" 
+                              Color="Color.Primary" 
+                              Label="Include tie-breaker question" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudButton Variant="Variant.Filled" 
+                              Color="Color.Primary" 
+                              OnClick="GenerateTriviaQuestions" 
+                              StartIcon="@Icons.Material.Filled.AutoAwesome" 
+                              Disabled="@IsGenerating"
+                              Class="mb-3">
+                        @(IsGenerating ? "Generating..." : "Generate Trivia Questions")
+                    </MudButton>
+                    
+                    @if (IsGenerating)
+                    {
+                        <MudProgressLinear Indeterminate="true" Class="mt-2" />
+                    }
+                    
+                    @if (!string.IsNullOrEmpty(GenerationError))
+                    {
+                        <MudAlert Severity="Severity.Error" Class="mt-2">@GenerationError</MudAlert>
+                    }
+                </MudItem>
+            </MudGrid>
+        </ChildContent>
+    </MudExpansionPanel>
 
     <!-- Trivia Name -->
     <MudText Typo="Typo.subtitle1" Class="fw-bold">Sprint Name:</MudText>
@@ -22,7 +75,7 @@
     }
 
     <!-- Questions List -->
-    <MudGrid Gutter="true">
+    <MudGrid>
         @foreach (var question in _sprint.Questions)
         {
             <MudItem xs="12" sm="6">
@@ -49,8 +102,9 @@
                             <MudText Typo="Typo.subtitle1">Select the correct answer:</MudText>
 
                             <!-- Single RadioGroup for the question -->
-                            <MudRadioGroup T="Guid"
-                                           @bind-SelectedOption="question.CorrectAnswerId"
+                            <MudRadioGroup T="Guid?"
+                                           @key="@($"{question.Id}_{question.CorrectAnswerId ?? Guid.Empty}")" 
+                                           Value="@question.CorrectAnswerId"
                                            ValueChanged="@(newValue => UpdateCorrectAnswer(question, newValue))">
 
                                 @foreach (var answer in question.Answers)
@@ -62,7 +116,7 @@
                                                       Class="flex-grow-1" />
 
                                         <!-- Radio for each answer -->
-                                        <MudRadio T="Guid"
+                                        <MudRadio T="Guid?"
                                                   Value="@(answer.Id)"
                                                   Color="Color.Primary"
                                                   Ripple="false"
@@ -130,6 +184,14 @@
         }
     }
 
+    
+    // OpenAI integration properties
+    private string TriviaCategory { get; set; } = "Random";
+    private int TriviaQuestionCount { get; set; } = 5;
+    private bool IncludeTieBreaker { get; set; } = true;
+    private bool IsGenerating { get; set; } = false;
+    private string GenerationError { get; set; } = "";
+    
     protected override void OnInitialized()
     {
         _sprint.Questions = InitializeQuestionsWithTieBreaker(5); // Initialize with 5 questions
@@ -181,7 +243,7 @@
         }
     }
 
-    private void UpdateCorrectAnswer(Question question, Guid selectedAnswerId)
+    private void UpdateCorrectAnswer(Question question, Guid? selectedAnswerId)
     {
         question.CorrectAnswerId = selectedAnswerId;
 
@@ -190,19 +252,131 @@
         {
             answer.IsCorrect = answer.Id == selectedAnswerId;
         }
+
+        StateHasChanged();
     }
 
-    private void CreateSprint()
+    private async Task GenerateTriviaQuestions()
     {
-        DbContext.Sprints.Add(_sprint);
-        DbContext.SaveChanges();
-
-        // Show toast notification
-        Snackbar.Add("Sprint created successfully!", Severity.Success, config =>
+        try
         {
-            config.RequireInteraction = false;
-            config.VisibleStateDuration = 10000; // 10 seconds
-        });
+            IsGenerating = true;
+            GenerationError = "";
+            
+            var result = await TriviaService.GenerateTrivia(
+                TriviaCategory, 
+                TriviaQuestionCount, 
+                IncludeTieBreaker);
+            
+            if (!string.IsNullOrEmpty(result.Error))
+            {
+                GenerationError = result.Error;
+                return;
+            }
+            
+            // Create a new sprint with generated questions
+            var sprintName = string.IsNullOrEmpty(TriviaCategory) || TriviaCategory.Equals("Random", StringComparison.OrdinalIgnoreCase)
+                ? $"Trivia Sprint {DateTime.Now:MMM d, yyyy}"
+                : $"{TriviaCategory} Trivia {DateTime.Now:MMM d, yyyy}";
+            
+            _sprint.Name = sprintName;
+            
+            // Create regular questions
+            var questions = new List<Question>();
+            
+            foreach (var triviaQuestion in result.Questions)
+            {
+                var question = new Question
+                {
+                    IsTieBreaker = false,
+                    QuestionText = triviaQuestion.QuestionText,
+                    Answers = []
+                };
+                
+                // First create all answers
+                foreach (var triviaAnswer in triviaQuestion.Answers)
+                {
+                    var answer = new Answer
+                    {
+                        Id = Guid.NewGuid(),
+                        Text = triviaAnswer.Text,
+                        IsCorrect = triviaAnswer.IsCorrect
+                    };
+                    
+                    question.Answers.Add(answer);
+                }
+                
+                // Then explicitly set CorrectAnswerId from the correct answer
+                var correctAnswer = question.Answers.FirstOrDefault(a => a.IsCorrect);
+                if (correctAnswer != null)
+                {
+                    question.CorrectAnswerId = correctAnswer.Id;
+                }
+                
+                questions.Add(question);
+            }
+            
+            // Add tie-breaker question if included
+            if (result.TieBreaker != null)
+            {
+                var tieBreakerQuestion = new Question
+                {
+                    IsTieBreaker = true,
+                    QuestionText = result.TieBreaker.QuestionText,
+                    TieBreakerAnswer = new Answer
+                    {
+                        Text = result.TieBreaker.Answer
+                    }
+                };
+                
+                questions.Add(tieBreakerQuestion);
+            }
+            
+            // Update the sprint with generated questions
+            _sprint.Questions = questions;
+        }
+        catch (Exception ex)
+        {
+            GenerationError = $"Error generating trivia: {ex.Message}";
+        }
+        finally
+        {
+            IsGenerating = false;        
+            await Task.Delay(1); 
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task CreateSprint()
+    {
+        // Check if the sprint has any data
+        Debug.WriteLine($"Saving sprint: {_sprint.Name} with {_sprint.Questions.Count} questions");
+    
+        try {
+            DbContext.Sprints.Add(_sprint);
+            var changesCount = await DbContext.SaveChangesAsync();
+        
+            Debug.WriteLine($"SaveChanges returned: {changesCount} records affected");
+        
+            // Verify the sprint was saved
+            var savedSprint = await DbContext.Sprints
+                .Include(s => s.Questions)
+                .ThenInclude(q => q.Answers)
+                .FirstOrDefaultAsync(s => s.Name == _sprint.Name);
+            
+            Debug.WriteLine($"Verified sprint in DB: {savedSprint?.Name ?? "Not Found"} with {savedSprint?.Questions.Count ?? 0} questions");
+        
+            // Show toast notification
+            Snackbar.Add($"Sprint created successfully! ID: {_sprint.Id}", Severity.Success, config =>
+            {
+                config.RequireInteraction = false;
+                config.VisibleStateDuration = 10000; // 10 seconds
+            });
+        }
+        catch (Exception ex) {
+            Debug.WriteLine($"Error saving sprint: {ex.Message}");
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
 
         // Navigate to the home page
         NavigationManager.NavigateTo("/");
@@ -214,27 +388,27 @@
         _sprint.Questions = InitializeQuestionsWithTieBreaker(5);
         
         // Define unique questions for regular questions
-        string[] questionTexts = 
-        {
+        string[] questionTexts =
+        [
             "What is the primary purpose of dependency injection in software development?",
             "Which design pattern is used to ensure a class has only one instance?",
             "What is the main benefit of using async/await in C#?",
             "Which data structure would be most efficient for frequent insertions and deletions?",
             "What is the primary difference between REST and GraphQL?"
-        };
+        ];
         
         // Four sets of unique answers corresponding to each question
-        string[][] answerSets = 
-        {
-            new[] { "To reduce coupling between components", "To increase code complexity", "To make testing more difficult", "To slow down application startup" },
-            new[] { "Singleton", "Factory", "Observer", "Decorator" },
-            new[] { "Improved UI responsiveness", "Reduced memory usage", "Faster execution", "Lower-level hardware access" },
-            new[] { "Linked List", "Array", "Hash Table", "Binary Tree" },
-            new[] { "REST returns fixed data structures while GraphQL returns only requested data", "REST is newer than GraphQL", "REST is stateful while GraphQL is stateless", "REST supports only XML while GraphQL supports only JSON" }
-        };
+        string[][] answerSets =
+        [
+            ["To reduce coupling between components", "To increase code complexity", "To make testing more difficult", "To slow down application startup"],
+            ["Singleton", "Factory", "Observer", "Decorator"],
+            ["Improved UI responsiveness", "Reduced memory usage", "Faster execution", "Lower-level hardware access"],
+            ["Linked List", "Array", "Hash Table", "Binary Tree"],
+            ["REST returns fixed data structures while GraphQL returns only requested data", "REST is newer than GraphQL", "REST is stateful while GraphQL is stateless", "REST supports only XML while GraphQL supports only JSON"]
+        ];
         
         // Correct answer indices (0-based) for each question
-        int[] correctAnswerIndices = { 0, 0, 0, 0, 0 };
+        int[] correctAnswerIndices = [0, 0, 0, 0, 0];
         
         // Set up each regular question
         for (int i = 0; i < 5; i++)
@@ -261,6 +435,8 @@
         var tieBreaker = _sprint.Questions.Last();
         tieBreaker.QuestionText = "How many LLM models were publicly released in 2023?";
         tieBreaker.TieBreakerAnswer.Text = "127";
+        
+        StateHasChanged();
         
         Snackbar.Add("Generated 5 unique questions with unique answers and a tie-breaker!", Severity.Info);
     }

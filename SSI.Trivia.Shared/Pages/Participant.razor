@@ -1,4 +1,5 @@
 ﻿@page "/participant"
+@using System.Diagnostics
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.AspNetCore.SignalR.Client
 @using SSI.Trivia.Shared.DbContexts
@@ -116,8 +117,9 @@
                                 {
                                     @if (!ActiveQuestion.IsTieBreaker)
                                     {
-                                        <MudRadioGroup T="Guid?" @bind-SelectedOption="CurrentAnswer"
-                                                       Disabled="@(SprintClosed)">
+                                        <MudRadioGroup T="Guid?"
+                                                       @key="@($"{ActiveQuestion.Id}_{CurrentAnswer ?? Guid.Empty}")"
+                                                       Value="CurrentAnswer" Disabled="@(SprintClosed)" ValueChanged="@(newVal => { CurrentAnswer = newVal; StateHasChanged(); })">
                                             @foreach (var answer in ActiveQuestion.Answers)
                                             {
                                                 <MudRadio T="Guid?" Value="@answer.Id" Color="Color.Primary" Class="mb-2">
@@ -288,44 +290,58 @@
         if (ActiveSprint?.Questions is { Count: > 0 })
         {
             ActiveQuestion = ActiveSprint.Questions[CurrentQuestionIndex];
+        
+            // First, reset the answer values to ensure UI starts fresh
+            CurrentAnswer = null;
+            TieBreakerAnswer = string.Empty;
 
-            // Set current answer if previously answered
+            // Then load the saved answers
             if (ActiveQuestion.IsTieBreaker)
             {
-                TieBreakerAnswers.TryGetValue(ActiveQuestion.Id, out string savedAnswer);
-                TieBreakerAnswer = savedAnswer ?? string.Empty;
+                if (TieBreakerAnswers.TryGetValue(ActiveQuestion.Id, out string savedAnswer))
+                {
+                    TieBreakerAnswer = savedAnswer;
+                }
             }
             else
             {
-                QuestionAnswers.TryGetValue(ActiveQuestion.Id, out Guid? savedAnswer);
-                CurrentAnswer = savedAnswer;
+                if (QuestionAnswers.TryGetValue(ActiveQuestion.Id, out Guid? savedAnswer))
+                {
+                    // Explicitly set CurrentAnswer to trigger UI update
+                    CurrentAnswer = savedAnswer;
+                }
             }
+        
+            // Force a StateHasChanged to ensure UI updates with the loaded answer
+            InvokeAsync(StateHasChanged);
         }
         else
         {
             ActiveQuestion = null;
+            CurrentAnswer = null;
+            TieBreakerAnswer = string.Empty;
         }
     }
 
     private void PreviousQuestion()
     {
-        SaveCurrentAnswer();
+        SaveCurrentAnswer(); // Save the current answer before navigating
 
         if (CurrentQuestionIndex > 0)
         {
             CurrentQuestionIndex--;
-            UpdateActiveQuestion();
+            UpdateActiveQuestion(); // Load the previous question and its saved answer
         }
     }
 
     private void NextQuestion()
     {
-        SaveCurrentAnswer();
+        SaveCurrentAnswer(); // Save the current answer before navigating
 
         if (ActiveSprint?.Questions != null && CurrentQuestionIndex < ActiveSprint.Questions.Count - 1)
         {
             CurrentQuestionIndex++;
-            UpdateActiveQuestion();
+            UpdateActiveQuestion(); // Load the next question and its saved answer
         }
     }
 
@@ -333,6 +349,7 @@
     {
         if (ActiveQuestion == null) return;
 
+        // Save the current answer to the appropriate dictionary using the question ID
         if (ActiveQuestion.IsTieBreaker)
         {
             if (!string.IsNullOrWhiteSpace(TieBreakerAnswer))
@@ -345,7 +362,7 @@
             QuestionAnswers[ActiveQuestion.Id] = CurrentAnswer;
         }
 
-        // In a real implementation, we would save this to the database
+        // Save to the database
         SaveAnswerToDatabase();
     }
 
@@ -433,7 +450,7 @@
         ActiveSprint = sprint;
         CurrentQuestionIndex = 0;
         SprintClosed = false;
-        UpdateActiveQuestion();
+        await LoadSavedAnswers();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -443,9 +460,20 @@
             questionIndex >= 0 &&
             questionIndex < ActiveSprint.Questions.Count)
         {
+            // Save answer from current question before changing
             SaveCurrentAnswer();
+        
+            // Update question index
             CurrentQuestionIndex = questionIndex;
+        
+            // Clear current selections to avoid stale data
+            CurrentAnswer = null;
+            TieBreakerAnswer = string.Empty;
+        
+            // Load the question and any saved answers
             UpdateActiveQuestion();
+        
+            // Ensure UI gets refreshed
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -463,4 +491,47 @@
             await _hubConnection.DisposeAsync();
         }
     }
+
+    private async Task LoadSavedAnswers()
+    {
+        if (CurrentParticipant == null || ActiveSprint == null)
+            return;
+
+        try
+        {
+            // Clear existing cached answers
+            QuestionAnswers.Clear();
+            TieBreakerAnswers.Clear();
+
+            // Load all participant answers for this sprint
+            var questionIds = ActiveSprint.Questions.Select(q => q.Id).ToList();
+        
+            var savedAnswers = await DbContext.ParticipantAnswers
+                .Where(pa => pa.ParticipantId == CurrentParticipant.Id && 
+                             questionIds.Contains(pa.QuestionId))
+                .ToListAsync();
+
+            // Populate the dictionaries with saved answers
+            foreach (var answer in savedAnswers)
+            {
+                if (answer.SelectedAnswerId.HasValue)
+                {
+                    QuestionAnswers[answer.QuestionId] = answer.SelectedAnswerId;
+                }
+            
+                if (!string.IsNullOrEmpty(answer.TieBreakerText))
+                {
+                    TieBreakerAnswers[answer.QuestionId] = answer.TieBreakerText;
+                }
+            }
+
+            // Update the current answer based on the active question
+            UpdateActiveQuestion();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error loading saved answers: {ex.Message}");
+        }
+    }
+
 }
