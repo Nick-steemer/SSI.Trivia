@@ -1,18 +1,23 @@
 ﻿@page "/presenter"
+@using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.EntityFrameworkCore
 @using SSI.Trivia.Shared.DbContexts
 @using SSI.Trivia.Shared.Models
 @using SSI.Trivia.Shared.Components
+@implements IAsyncDisposable
 @inject TriviaDbContext DbContext
+@inject NavigationManager NavigationManager
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
     <MudPaper Class="p-4">
         <MudStack Spacing="2">
             @if (SelectedSprint == null)
             {
-                <MudAutocomplete T="Sprint" Label="Select a Game"
+                <MudAutocomplete T="Sprint" Label="Select a Sprint"
                                  @bind-Value="SelectedSprint"
-                                 @bind-Value:after="OnGameSelected"
+                                 @bind-Value:after="OnSprintSelected"
                                  ToStringFunc="(g) => g?.Name"
                                  SearchFunc="SearchSprints"
                                  CoerceValue="true"
@@ -48,9 +53,57 @@
                         </MudStack>
                     </MudPaper>
 
-                    @if (CurrentQuestion != null)
+                    <MudStack Class="mb-3">
+                        <MudButton Variant="@(IsSprintActive ? Variant.Filled : Variant.Outlined)"
+                                   Color="@(IsSprintActive ? Color.Error : Color.Success)"
+                                   FullWidth="true"
+                                   OnClick="ToggleSprintState">
+                            @(IsSprintActive ? "End Trivia" : "Start Trivia")
+                        </MudButton>
+
+                        @if (IsSprintActive)
+                        {
+                            <MudAlert Severity="Severity.Info" Class="mb-2">
+                                Sprint is active - participants can join and submit answers
+                            </MudAlert>
+                        }
+                    </MudStack>
+
+                    @if (CurrentQuestion != null && (!CurrentQuestion.IsTieBreaker || ShowTieBreakerQuestion))
                     {
                         <Slide Question="CurrentQuestion" />
+
+                        @if (CurrentQuestion.IsTieBreaker)
+                        {
+                            <MudExpansionPanel Class="mt-3">
+                                <TitleContent>
+                                    <MudText Typo="Typo.h6">Tie-Breaker Controls</MudText>
+                                </TitleContent>
+                                <ChildContent>
+                                    <MudText Typo="Typo.body2" Class="mb-2">
+                                        Participants with the highest scores will automatically be eligible for the tie-breaker question.
+                                    </MudText>
+
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                               OnClick="SetupTieBreakerEligibility"
+                                               Class="mb-2">
+                                        Set Up Tie-Breaker Eligibility
+                                    </MudButton>
+                                </ChildContent>
+                            </MudExpansionPanel>
+                        }
+                    }
+                    else if (CurrentQuestion?.IsTieBreaker == true && !ShowTieBreakerQuestion)
+                    {
+                        <MudAlert Severity="Severity.Info" Class="mb-3">
+                            There's a tie-breaker question available. Click "Set Up Tie-Breaker" to determine if it's needed.
+                        </MudAlert>
+    
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   OnClick="SetupTieBreakerEligibility"
+                                   FullWidth="true" Class="mb-2">
+                            Set Up Tie-Breaker
+                        </MudButton>
                     }
                     else
                     {
@@ -71,7 +124,7 @@
                 {
                     <MudPaper Class="p-2 mb-4">
                         <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-                            <MudText Typo="Typo.h5">Game Review: @SelectedSprint.Name</MudText>
+                            <MudText Typo="Typo.h5">Sprint Review: @SelectedSprint.Name</MudText>
                             <MudStack Row="true">
                                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
                                            OnClick="ToggleShowCorrectAnswers">
@@ -89,72 +142,113 @@
                         </MudStack>
                     </MudPaper>
 
-                    <MudStack>
-                        @foreach (var question in SelectedSprint.Questions)
-                        {
-                            <MudCard Class="mb-4">
-                                <MudCardHeader>
-                                    <MudText Typo="Typo.h5">Question #@(SelectedSprint.Questions.IndexOf(question) + 1)</MudText>
-                                </MudCardHeader>
-                                <MudCardContent>
-                                    <MudText Typo="Typo.body1" Class="mb-3">@question.QuestionText</MudText>
+                    @if (!ShowParticipantScores)
+                    {
+                        <MudStack>
+                            @foreach (var question in SelectedSprint.Questions.Where(q => !q.IsTieBreaker || ShowTieBreakerQuestion))
+                            {
+                                <MudCard Class="mb-4">
+                                    <MudCardHeader>
+                                        <MudText Typo="Typo.h5">Question #@(SelectedSprint.Questions.IndexOf(question) + 1)</MudText>
+                                    </MudCardHeader>
+                                    <MudCardContent>
+                                        <MudText Typo="Typo.body1" Class="mb-3">@question.QuestionText</MudText>
 
-                                    @if (!string.IsNullOrEmpty(question.MediaUrl) || !string.IsNullOrEmpty(question.UploadedMediaBase64))
-                                    {
-                                        <MudImage Src="@(string.IsNullOrEmpty(question.MediaUrl) ?
-                                                $"data:image;base64,{question.UploadedMediaBase64}" : question.MediaUrl)"
-                                                  Alt="Question Media" Class="mb-3" Style="max-width:100%;" />
-                                    }
+                                        @if (!string.IsNullOrEmpty(question.MediaUrl) || !string.IsNullOrEmpty(question.UploadedMediaBase64))
+                                        {
+                                            <MudImage Src="@(string.IsNullOrEmpty(question.MediaUrl) ?
+                                                    $"data:image;base64,{question.UploadedMediaBase64}" : question.MediaUrl)"
+                                                      Alt="Question Media" Class="mb-3" Style="max-width:100%;" />
+                                        }
 
-                                    @if (!question.IsTieBreaker)
-                                    {
-                                        <MudList T="Answer" Dense="true" DisablePadding="true">
-                                            @foreach (var answer in question.Answers)
-                                            {
-                                                <MudListItem>
-                                                    <MudStack Row="true" AlignItems="AlignItems.Center">
-                                                        @if (ShowCorrectAnswers && answer.IsCorrect)
-                                                        {
-                                                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle"
-                                                                     Color="Color.Success" Class="mr-2" />
-                                                        }
-                                                        <MudText Typo="Typo.body1"
-                                                                 Color="@(ShowCorrectAnswers && answer.IsCorrect ?
-                                                                         Color.Success : Color.Default)">
-                                                            @answer.Text
-                                                        </MudText>
-                                                    </MudStack>
-                                                </MudListItem>
-                                            }
-                                        </MudList>
-                                    }
-                                </MudCardContent>
-                            </MudCard>
-                        }
-                    </MudStack>
+                                        @if (!question.IsTieBreaker)
+                                        {
+                                            <MudList T="Answer" Dense="true">
+                                                @foreach (var answer in question.Answers)
+                                                {
+                                                    <MudListItem>
+                                                        <MudStack Row="true" AlignItems="AlignItems.Center">
+                                                            @if (ShowCorrectAnswers && answer.IsCorrect)
+                                                            {
+                                                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle"
+                                                                         Color="Color.Success" Class="mr-2" />
+                                                            }
+                                                            <MudText Typo="Typo.body1"
+                                                                     Color="@(ShowCorrectAnswers && answer.IsCorrect ?
+                                                                             Color.Success : Color.Default)">
+                                                                @answer.Text
+                                                            </MudText>
+                                                        </MudStack>
+                                                    </MudListItem>
+                                                }
+                                            </MudList>
+                                        }
+                                    </MudCardContent>
+                                </MudCard>
+                            }
+                        </MudStack>
+                    }
 
                     @if (ShowParticipantScores)
                     {
                         <MudDivider Class="my-4" />
                         <MudText Typo="Typo.h5" Class="mb-4">Participant Scores</MudText>
-                        <MudAlert Severity="Severity.Info">
-                            Participant scoring functionality will need to be implemented.
-                            This would typically involve retrieving player submissions from a database and calculating scores.
-                        </MudAlert>
 
-                        @* This section would display the participant scores once implemented *@
-                        @* Example implementation:
-                        <MudTable Items="@ParticipantScores" Hover="true" Dense="true">
-                            <HeaderContent>
-                                <MudTh>Participant</MudTh>
-                                <MudTh>Score</MudTh>
-                            </HeaderContent>
-                            <RowTemplate>
-                                <MudTd>@context.Name</MudTd>
-                                <MudTd>@context.Score</MudTd>
-                            </RowTemplate>
-                        </MudTable>
-                        *@
+                        @if (ParticipantScores.Count == 0 && IsLoading)
+                        {
+                            <MudProgressCircular Indeterminate="true" />
+                        }
+                        else if (ParticipantScores.Count == 0)
+                        {
+                            <MudAlert Severity="Severity.Info">
+                                No participant scores available for this sprint.
+                            </MudAlert>
+                        }
+                        else
+                        {
+                            <MudTable Items="@ParticipantScores" Hover="true" Dense="true"
+                                      SortLabel="Sort By" Class="mb-4">
+                                <ToolBarContent>
+                                    <MudText Typo="Typo.h6">Scores</MudText>
+                                    <MudSpacer />
+                                    <MudTextField @bind-Value="SearchString" Placeholder="Search"
+                                                  Adornment="Adornment.Start"
+                                                  AdornmentIcon="@Icons.Material.Filled.Search"
+                                                  IconSize="Size.Medium" Class="mt-0"></MudTextField>
+                                </ToolBarContent>
+                                <HeaderContent>
+                                    <MudTh><MudTableSortLabel SortBy="new Func<ParticipantScoreViewModel, object>(x => x.Rank)">Rank</MudTableSortLabel></MudTh>
+                                    <MudTh><MudTableSortLabel SortBy="new Func<ParticipantScoreViewModel, object>(x => x.Name)">Participant</MudTableSortLabel></MudTh>
+                                    <MudTh><MudTableSortLabel SortBy="new Func<ParticipantScoreViewModel, object>(x => x.Score)" InitialDirection="SortDirection.Descending">Score</MudTableSortLabel></MudTh>
+                                    <MudTh><MudTableSortLabel SortBy="new Func<ParticipantScoreViewModel, object>(x => x.CorrectAnswers)">Correct Answers</MudTableSortLabel></MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd DataLabel="Rank">
+                                        @if (context.Rank <= 3)
+                                        {
+                                            <MudIcon Icon="@(context.Rank == 1 ? Icons.Material.Filled.EmojiEvents :
+                                                           context.Rank == 2 ? Icons.Material.Filled.WorkspacePremium :
+                                                           Icons.Material.Filled.MilitaryTech)"
+                                                     Color="@(context.Rank switch
+                                                                {
+                                                                    1 => Color.Warning,
+                                                                    2 => Color.Tertiary,
+                                                                    _ => Color.Tertiary
+                                                                })"
+                                                     Size="Size.Small"
+                                                     Class="mr-1" />
+                                        }
+                                        @context.Rank
+                                    </MudTd>
+                                    <MudTd DataLabel="Participant">@context.Name</MudTd>
+                                    <MudTd DataLabel="Score">@context.Score</MudTd>
+                                    <MudTd DataLabel="Correct Answers">@context.CorrectAnswers / @context.TotalQuestions</MudTd>
+                                </RowTemplate>
+                                <PagerContent>
+                                    <MudTablePager />
+                                </PagerContent>
+                            </MudTable>
+                        }
                     }
                 }
             }
@@ -167,21 +261,53 @@
     private Sprint? SelectedSprint { get; set; }
     private Question? CurrentQuestion { get; set; }
     private int CurrentQuestionIndex { get; set; } = 0;
+    private HubConnection? hubConnection;
+    private bool IsSprintActive { get; set; } = false;
+    private bool IsLoading { get; set; } = false;
+    private string SearchString { get; set; } = "";
 
-    // Review mode states
     private bool IsReviewMode { get; set; } = false;
     private bool ShowCorrectAnswers { get; set; } = false;
     private bool ShowParticipantScores { get; set; } = false;
+    private bool ShowTieBreakerQuestion { get; set; } = false;
 
-    // Component reference for MudAutocomplete
+    private List<ParticipantScoreViewModel> ParticipantScores { get; set; } = new();
+
     private MudAutocomplete<Sprint>? _autocompleteRef;
 
     protected override async Task OnInitializedAsync()
     {
-        Sprints = await DbContext.Sprints
-            .Include(g => g.Questions)
-            .ThenInclude(q => q.Answers)
-            .ToListAsync();
+        try
+        {
+            Sprints = await DbContext.Sprints
+                .Include(g => g.Questions)
+                .ThenInclude(q => q.Answers)
+                .ToListAsync();
+
+            var baseUrl = NavigationManager.BaseUri.Contains("0.0.0.1") 
+                ? "https://localhost:7296" // Updated to match your actual HTTPS port
+                : NavigationManager.BaseUri;
+
+            hubConnection = new HubConnectionBuilder()
+                .WithUrl($"{baseUrl.TrimEnd('/')}/triviahub")
+                .WithAutomaticReconnect()
+                .Build();
+
+            await hubConnection.StartAsync();
+            await hubConnection.InvokeAsync("JoinPresenterGroup");
+        }
+        catch (Exception ex)
+        {
+            // Show toast notification before redirecting
+            Snackbar.Add("You are being redirected to the Admin page because the application ran into an issue with setting up the presenter page. This typically happens when there are no trivia sprints available.", Severity.Warning, config =>
+            {
+                config.RequireInteraction = false;
+                config.VisibleStateDuration = 8000; // 8 seconds
+            });
+            
+            // Redirect to Admin page to create sprints
+            NavigationManager.NavigateTo("/Admin");
+        }
     }
 
     private Task<IEnumerable<Sprint>> SearchSprints(string value, CancellationToken cancellationToken)
@@ -206,17 +332,19 @@
         return Task.FromResult(result);
     }
 
-    private async Task OnGameSelected()
+    private async Task OnSprintSelected()
     {
         if (SelectedSprint != null)
         {
             CurrentQuestionIndex = 0;
+            ShowTieBreakerQuestion = false;
             UpdateCurrentQuestion();
             IsReviewMode = false;
             ShowCorrectAnswers = false;
             ShowParticipantScores = false;
+            IsSprintActive = false;
+            ParticipantScores.Clear();
 
-            // Close the autocomplete dropdown
             if (_autocompleteRef != null) await _autocompleteRef.CloseMenuAsync();
         }
         else
@@ -227,28 +355,69 @@
 
     private void UpdateCurrentQuestion()
     {
-        // Added null check for SelectedGame and ensured there are Questions available
-        CurrentQuestion = SelectedSprint?.Questions is { Count: > 0 }
-            ? SelectedSprint.Questions[CurrentQuestionIndex]
-            : null;
+        if (SelectedSprint?.Questions is not { Count: > 0 })
+        {
+            CurrentQuestion = null;
+            return;
+        }
+        
+        // Skip tie-breaker questions during normal navigation unless explicitly enabled
+        var questions = SelectedSprint.Questions;
+        if (CurrentQuestionIndex < questions.Count)
+        {
+            var question = questions[CurrentQuestionIndex];
+            
+            // If this is a tie-breaker and we're not showing tie-breakers,
+            // find the next non-tie-breaker question if available
+            if (question.IsTieBreaker && !ShowTieBreakerQuestion && 
+                CurrentQuestionIndex < questions.Count - 1)
+            {
+                // Find next non-tie-breaker question
+                for (int i = CurrentQuestionIndex + 1; i < questions.Count; i++)
+                {
+                    if (!questions[i].IsTieBreaker)
+                    {
+                        CurrentQuestionIndex = i;
+                        question = questions[i];
+                        break;
+                    }
+                }
+            }
+            
+            CurrentQuestion = question;
+        }
+        else
+        {
+            CurrentQuestion = null;
+        }
     }
 
-    private void PreviousQuestion()
+    private async Task PreviousQuestion()
     {
         if (CurrentQuestionIndex > 0)
         {
             CurrentQuestionIndex--;
             UpdateCurrentQuestion();
+
+            if (IsSprintActive && hubConnection != null)
+            {
+                await hubConnection.InvokeAsync("NavigateToQuestion", CurrentQuestionIndex);
+            }
         }
     }
 
-    private void NextQuestion()
+    private async Task NextQuestion()
     {
         if (SelectedSprint is not null &&
             CurrentQuestionIndex < SelectedSprint.Questions.Count - 1)
         {
             CurrentQuestionIndex++;
             UpdateCurrentQuestion();
+
+            if (IsSprintActive && hubConnection != null)
+            {
+                await hubConnection.InvokeAsync("NavigateToQuestion", CurrentQuestionIndex);
+            }
         }
     }
 
@@ -267,9 +436,217 @@
         ShowCorrectAnswers = !ShowCorrectAnswers;
     }
 
-    private void ToggleShowParticipantScores()
+    private async Task ToggleShowParticipantScores()
     {
         ShowParticipantScores = !ShowParticipantScores;
+
+        if (ShowParticipantScores && ParticipantScores.Count == 0 && SelectedSprint != null)
+        {
+            await LoadParticipantScores();
+        }
+    }
+
+    private async Task LoadParticipantScores()
+    {
+        if (SelectedSprint == null) return;
+
+        IsLoading = true;
+        ParticipantScores.Clear();
+
+        try
+        {
+            var participantAnswers = await DbContext.ParticipantAnswers
+                .Where(pa => SelectedSprint.Questions.Select(q => q.Id).Contains(pa.QuestionId))
+                .Include(pa => pa.Participant)
+                .ToListAsync();
+
+            var questionsWithCorrectAnswers = SelectedSprint.Questions
+                .Where(q => !q.IsTieBreaker)
+                .Select(q => new
+                {
+                    QuestionId = q.Id,
+                    CorrectAnswerId = q.Answers.FirstOrDefault(a => a.IsCorrect)?.Id
+                })
+                .ToList();
+
+            var participantGroups = participantAnswers
+                .GroupBy(pa => pa.ParticipantId);
+
+            var scores = new List<ParticipantScoreViewModel>();
+
+            foreach (var group in participantGroups)
+            {
+                var participant = group.First().Participant;
+
+                int correctAnswers = 0;
+                int score = 0;
+
+                foreach (var answer in group)
+                {
+                    var questionInfo = questionsWithCorrectAnswers
+                        .FirstOrDefault(q => q.QuestionId == answer.QuestionId);
+
+                    if (questionInfo != null && answer.SelectedAnswerId == questionInfo.CorrectAnswerId)
+                    {
+                        correctAnswers++;
+                        score += 10;
+                    }
+                }
+
+                scores.Add(new ParticipantScoreViewModel
+                    {
+                        ParticipantId = participant.Id,
+                        Name = participant.Name,
+                        Score = score,
+                        CorrectAnswers = correctAnswers,
+                        TotalQuestions = questionsWithCorrectAnswers.Count
+                    });
+            }
+
+            var rankedScores = scores.OrderByDescending(s => s.Score).ToList();
+
+            int currentRank = 1;
+            int currentScore = -1;
+            int sameRankCount = 0;
+
+            for (int i = 0; i < rankedScores.Count; i++)
+            {
+                if (rankedScores[i].Score != currentScore)
+                {
+                    currentRank = i + 1 - sameRankCount;
+                    currentScore = rankedScores[i].Score;
+                    sameRankCount = 0;
+                }
+                else
+                {
+                    sameRankCount++;
+                }
+
+                rankedScores[i].Rank = currentRank;
+            }
+
+            ParticipantScores = rankedScores;
+        }
+        catch (Exception)
+        {
+        }
+        finally
+        {
+            IsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleSprintState()
+    {
+        if (hubConnection == null || SelectedSprint == null) return;
+
+        if (!IsSprintActive)
+        {
+            IsSprintActive = true;
+            await StartSprint(SelectedSprint);
+        }
+        else
+        {
+            IsSprintActive = false;
+            await EndSprint();
+        }
+    }
+
+    private async Task StartSprint(Sprint sprint)
+    {
+        if (hubConnection != null)
+        {
+            await hubConnection.InvokeAsync("StartSprint", sprint);
+            IsSprintActive = true;
+        }
+    }
+
+    private async Task EndSprint()
+    {
+        if (hubConnection != null)
+        {
+            await hubConnection.InvokeAsync("CloseSprint");
+            IsSprintActive = false;
+        }
+    }
+
+    private async Task SetupTieBreakerEligibility()
+    {
+        if (SelectedSprint == null || hubConnection == null) return;
+
+        // First load the current scores if not already loaded
+        if (ParticipantScores.Count == 0)
+        {
+            await LoadParticipantScores();
+        }
+
+        if (ParticipantScores.Count == 0) return; // No participants
+
+        // Find the highest score
+        int highestScore = ParticipantScores.Max(p => p.Score);
+
+        // Find all participants with the highest score
+        var eligibleParticipants = ParticipantScores
+            .Where(p => p.Score == highestScore)
+            .ToList();
+
+        if (eligibleParticipants.Count > 1)
+        {
+            // We have a tie! Make these participants eligible for the tie-breaker
+            foreach (var participant in eligibleParticipants)
+            {
+                // For this implementation, we'll use the participant ID to find connections
+                await hubConnection.InvokeAsync("SetTieBreakerEligibilityForParticipant", participant.ParticipantId, true);
+            }
+
+            // Enable tie-breaker questions to be displayed
+            ShowTieBreakerQuestion = true;
+            
+            // Find and navigate to the tie-breaker question
+            int tieBreakerIndex = SelectedSprint.Questions.FindIndex(q => q.IsTieBreaker);
+            if (tieBreakerIndex >= 0)
+            {
+                CurrentQuestionIndex = tieBreakerIndex;
+                UpdateCurrentQuestion();
+            }
+
+            // Show message about tie-breaker eligibility
+            var eligibleNames = string.Join(", ", eligibleParticipants.Select(p => p.Name));
+
+            // Display notification about eligible participants
+            var parameters = new DialogParameters
+            {
+                { "ContentText", $"The following participants are tied with {highestScore} points and are eligible for the tie-breaker: {eligibleNames}" },
+                { "ButtonText", "OK" },
+                { "Color", Color.Primary }
+            };
+
+            var dialogOptions = new DialogOptions() { CloseButton = true, MaxWidth = MaxWidth.Small };
+            await DialogService.ShowAsync<MessageDialog>("Tie-Breaker Eligibility", parameters, dialogOptions);
+        }
+        else
+        {
+            var winner = eligibleParticipants.FirstOrDefault();
+
+            var parameters = new DialogParameters
+            {
+                { "ContentText", $"Trivia over! The winner is {winner?.Name} with {highestScore} points. No tie-breaker needed!" },
+                { "ButtonText", "OK" },
+                { "Color", Color.Success }
+            };
+
+            var dialogOptions = new DialogOptions() { CloseButton = true, MaxWidth = MaxWidth.Small };
+            await DialogService.ShowAsync<MessageDialog>("Trivia Result", parameters, dialogOptions);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection != null)
+        {
+            await hubConnection.DisposeAsync();
+        }
     }
 
     private bool IsFirstQuestion => CurrentQuestionIndex == 0;

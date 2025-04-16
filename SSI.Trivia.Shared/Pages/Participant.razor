@@ -1,0 +1,537 @@
+﻿@page "/participant"
+@using System.Diagnostics
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.SignalR.Client
+@using SSI.Trivia.Shared.DbContexts
+@using SSI.Trivia.Shared.Components
+@using SSI.Trivia.Shared.Services
+@using System.Threading.Tasks
+@implements IAsyncDisposable
+@inject TriviaDbContext DbContext
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@inject AuthService AuthService
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudPaper Class="p-4">
+        <MudStack Spacing="2">
+            @if (RegistrationState == Models.RegistrationState.NotRegistered)
+            {
+                <MudText Typo="Typo.h4" Color="Color.Primary" Class="mb-4">Trivia Registration</MudText>
+                
+                @if (IsActiveDirectoryAuthenticated)
+                {
+                    <MudAlert Severity="Severity.Info" Class="mb-3">
+                        <MudText>Signed in as <strong>@ActiveDirectoryName</strong></MudText>
+                    </MudAlert>
+                }
+
+                <MudAutocomplete T="Models.Participant" Label="Your Name"
+                                 @bind-Value="CurrentParticipant"
+                                 ToStringFunc="@(p => p?.Name ?? string.Empty)"
+                                 SearchFunc="@SearchParticipants"
+                                 ResetValueOnEmptyText="true"
+                                 AdornmentIcon="@Icons.Material.Filled.Person"
+                                 Variant="Variant.Outlined"
+                                 Clearable="true"
+                                 CoerceValue="false"
+                                 Class="mb-2" />
+
+                <MudTextField @bind-Value="NewParticipantName" Label="Or enter a new name"
+                              Variant="Variant.Outlined"
+                              Placeholder="Enter your name here..."
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@Icons.Material.Filled.Add"
+                              Class="mb-4" />
+
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                           OnClick="RegisterParticipant"
+                           Disabled="@(string.IsNullOrWhiteSpace(NewParticipantName) && CurrentParticipant == null)">
+                    Register and Start
+                </MudButton>
+            }
+            else if (RegistrationState == Models.RegistrationState.Registered && ActiveSprint == null)
+            {
+                <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Class="py-8">
+                    <MudText Typo="Typo.h4" Color="Color.Primary">Welcome, @ParticipantName!</MudText>
+                    <MudText Typo="Typo.body1" Class="mt-4 text-center">
+                        Please wait for the presenter to start the trivia game.
+                    </MudText>
+                    <MudProgressCircular Color="Color.Default" Indeterminate="true" Class="mt-4" />
+                </MudStack>
+
+                <MudButton Variant="Variant.Text" Color="Color.Error"
+                           OnClick="ResetRegistration"
+                           Class="mt-2">
+                    Change Name
+                </MudButton>
+            }
+            else if (RegistrationState == Models.RegistrationState.Registered && ActiveSprint != null)
+            {
+                <MudStack AlignItems="AlignItems.Start" Justify="Justify.SpaceBetween" Class="mb-4">
+                    <MudText Typo="Typo.h5">@ActiveSprint.Name</MudText>
+                    <MudText Typo="Typo.subtitle2">Participant: @ParticipantName</MudText>
+                </MudStack>
+
+                @if (ActiveQuestion != null)
+                {
+                    <MudStack>
+                        <MudPaper Class="p-2 mb-2">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                           OnClick="PreviousQuestion" Disabled="@IsFirstQuestion">
+                                    <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" />
+                                    Previous
+                                </MudButton>
+
+                                <MudText Typo="Typo.subtitle1">
+                                    Question @CurrentQuestionNumber of @TotalQuestions
+                                </MudText>
+
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                           OnClick="NextQuestion" Disabled="@IsLastQuestion">
+                                    Next
+                                    <MudIcon Icon="@Icons.Material.Filled.ChevronRight" />
+                                </MudButton>
+                            </MudStack>
+                        </MudPaper>
+
+                        <MudCard Class="mb-4">
+                            <MudCardContent>
+                                <MudText Typo="Typo.h6" Class="mb-3">@ActiveQuestion.QuestionText</MudText>
+
+                                @if (!string.IsNullOrEmpty(ActiveQuestion.MediaUrl) || !string.IsNullOrEmpty(ActiveQuestion.UploadedMediaBase64))
+                                {
+                                    <MudImage Src="@(string.IsNullOrEmpty(ActiveQuestion.MediaUrl) ?
+                                              $"data:image;base64,{ActiveQuestion.UploadedMediaBase64}" : ActiveQuestion.MediaUrl)"
+                                              Alt="Question Media" Class="mb-3" Style="max-width:100%;" />
+                                }
+
+                                @if (ActiveQuestion.IsTieBreaker && !IsTieBreakerEligible)
+                                {
+                                    <MudAlert Severity="Severity.Info" Class="mb-3">
+                                        This is a tie-breaker question for participants with tied scores.
+                                    </MudAlert>
+                                }
+                                else
+                                {
+                                    @if (!ActiveQuestion.IsTieBreaker)
+                                    {
+                                        <MudRadioGroup T="Guid?"
+                                                       @key="@($"{ActiveQuestion.Id}_{CurrentAnswer ?? Guid.Empty}")"
+                                                       Value="CurrentAnswer" Disabled="@(SprintClosed)" ValueChanged="@(newVal => { CurrentAnswer = newVal; StateHasChanged(); })">
+                                            @foreach (var answer in ActiveQuestion.Answers)
+                                            {
+                                                <MudRadio T="Guid?" Value="@answer.Id" Color="Color.Primary" Class="mb-2">
+                                                    @answer.Text
+                                                </MudRadio>
+                                            }
+                                        </MudRadioGroup>
+                                    }
+                                    else
+                                    {
+                                        <MudTextField @bind-Value="TieBreakerAnswer"
+                                                      Label="Your Answer"
+                                                      Variant="Variant.Outlined"
+                                                      Disabled="@(SprintClosed)"
+                                                      Class="mt-3" />
+                                    }
+                                }
+
+                                @if (SprintClosed)
+                                {
+                                    <MudAlert Severity="Severity.Warning" Class="mt-4">
+                                        The trivia game has ended. You can no longer change your answers.
+                                    </MudAlert>
+                                }
+                            </MudCardContent>
+                        </MudCard>
+                    </MudStack>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">
+                        Please wait for the presenter to show a question.
+                    </MudAlert>
+                }
+            }
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private List<Models.Participant> Participants { get; set; } = new();
+    private Models.Participant? CurrentParticipant { get; set; }
+    private string NewParticipantName { get; set; } = string.Empty;
+    private Models.RegistrationState RegistrationState { get; set; } = Models.RegistrationState.NotRegistered;
+    private string ParticipantName => CurrentParticipant?.Name ?? NewParticipantName;
+    private HubConnection? _hubConnection;
+    public bool IsConnected => _hubConnection?.State == HubConnectionState.Connected;
+    
+    // Active Directory authentication properties
+    private bool IsActiveDirectoryAuthenticated { get; set; } = false;
+    private string? ActiveDirectoryName { get; set; }
+
+    // Active game session
+    private Models.Sprint? ActiveSprint { get; set; }
+    private Models.Question? ActiveQuestion { get; set; }
+    private int CurrentQuestionIndex { get; set; } = 0;
+    private Guid? CurrentAnswer { get; set; }
+    private string TieBreakerAnswer { get; set; } = string.Empty;
+    private bool SprintClosed { get; set; } = false;
+    private bool IsTieBreakerEligible { get; set; } = false;
+    private Dictionary<int, Guid?> QuestionAnswers { get; set; } = new();
+    private Dictionary<int, string> TieBreakerAnswers { get; set; } = new();
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check for Active Directory authentication
+        await CheckActiveDirectoryAuthentication();
+        
+        // Load existing participants from database
+        Participants = await DbContext.Participants.ToListAsync();
+
+        // Set up SignalR connection to receive updates from presenter
+        await InitializeSignalRConnection();
+    }
+
+    private async Task CheckActiveDirectoryAuthentication()
+    {
+        IsActiveDirectoryAuthenticated = await AuthService.IsUserAuthenticated();
+        if (IsActiveDirectoryAuthenticated)
+        {
+            // Get user name from Active Directory
+            ActiveDirectoryName = await AuthService.GetUserDisplayName();
+            
+            // Pre-populate the name field
+            if (!string.IsNullOrEmpty(ActiveDirectoryName))
+            {
+                // Check if this AD user has participated before
+                var existingParticipant = await DbContext.Participants
+                    .FirstOrDefaultAsync(p => p.Name.Equals(ActiveDirectoryName, StringComparison.OrdinalIgnoreCase));
+                
+                if (existingParticipant != null)
+                {
+                    // Use existing participant record
+                    CurrentParticipant = existingParticipant;
+                }
+                else
+                {
+                    // Pre-populate the name field for a new participant
+                    NewParticipantName = ActiveDirectoryName;
+                }
+            }
+        }
+    }
+
+    private async Task InitializeSignalRConnection()
+    {
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/triviahub"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        // Register SignalR event handlers
+        _hubConnection.On<Models.Sprint>("SprintStarted", OnSprintStarted);
+        _hubConnection.On<int>("QuestionChanged", OnQuestionChanged);
+        _hubConnection.On("SprintClosed", OnSprintClosed);
+        _hubConnection.On<bool>("TieBreakerEligibilityChanged", OnTieBreakerEligibilityChanged);
+
+        // Start the connection
+        await _hubConnection.StartAsync();
+    
+        // Join the participant group if we have a participant
+        if (CurrentParticipant != null)
+        {
+            await _hubConnection.InvokeAsync("JoinParticipantGroup", CurrentParticipant.Id);
+        }
+    }
+
+    private Task<IEnumerable<Models.Participant>> SearchParticipants(string value, CancellationToken token)
+    {
+        if (string.IsNullOrEmpty(value))
+            return Task.FromResult<IEnumerable<Models.Participant>>(Participants);
+
+        return Task.FromResult<IEnumerable<Models.Participant>>(
+            Participants.Where(p => p.Name.Contains(value, StringComparison.OrdinalIgnoreCase))
+        );
+    }
+
+    private async Task RegisterParticipant()
+    {
+        if (CurrentParticipant == null && !string.IsNullOrWhiteSpace(NewParticipantName))
+        {
+            // Create new participant
+            CurrentParticipant = new Models.Participant { Name = NewParticipantName.Trim() };
+            DbContext.Participants.Add(CurrentParticipant);
+            await DbContext.SaveChangesAsync();
+            Participants.Add(CurrentParticipant);
+        }
+
+        RegistrationState = Models.RegistrationState.Registered;
+    
+        // Join the participant group if we're connected
+        if (IsConnected && CurrentParticipant != null)
+        {
+            await _hubConnection!.InvokeAsync("JoinParticipantGroup", CurrentParticipant.Id);
+        }
+    }
+
+    private void ResetRegistration()
+    {
+        RegistrationState = Models.RegistrationState.NotRegistered;
+        CurrentParticipant = null;
+        NewParticipantName = string.Empty;
+    }
+
+    private void UpdateActiveQuestion()
+    {
+        if (ActiveSprint?.Questions is { Count: > 0 })
+        {
+            ActiveQuestion = ActiveSprint.Questions[CurrentQuestionIndex];
+        
+            // First, reset the answer values to ensure UI starts fresh
+            CurrentAnswer = null;
+            TieBreakerAnswer = string.Empty;
+
+            // Then load the saved answers
+            if (ActiveQuestion.IsTieBreaker)
+            {
+                if (TieBreakerAnswers.TryGetValue(ActiveQuestion.Id, out string savedAnswer))
+                {
+                    TieBreakerAnswer = savedAnswer;
+                }
+            }
+            else
+            {
+                if (QuestionAnswers.TryGetValue(ActiveQuestion.Id, out Guid? savedAnswer))
+                {
+                    // Explicitly set CurrentAnswer to trigger UI update
+                    CurrentAnswer = savedAnswer;
+                }
+            }
+        
+            // Force a StateHasChanged to ensure UI updates with the loaded answer
+            InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            ActiveQuestion = null;
+            CurrentAnswer = null;
+            TieBreakerAnswer = string.Empty;
+        }
+    }
+
+    private void PreviousQuestion()
+    {
+        SaveCurrentAnswer(); // Save the current answer before navigating
+
+        if (CurrentQuestionIndex > 0)
+        {
+            CurrentQuestionIndex--;
+            UpdateActiveQuestion(); // Load the previous question and its saved answer
+        }
+    }
+
+    private void NextQuestion()
+    {
+        SaveCurrentAnswer(); // Save the current answer before navigating
+
+        if (ActiveSprint?.Questions != null && CurrentQuestionIndex < ActiveSprint.Questions.Count - 1)
+        {
+            CurrentQuestionIndex++;
+            UpdateActiveQuestion(); // Load the next question and its saved answer
+        }
+    }
+
+    private void SaveCurrentAnswer()
+    {
+        if (ActiveQuestion == null) return;
+
+        // Save the current answer to the appropriate dictionary using the question ID
+        if (ActiveQuestion.IsTieBreaker)
+        {
+            if (!string.IsNullOrWhiteSpace(TieBreakerAnswer))
+            {
+                TieBreakerAnswers[ActiveQuestion.Id] = TieBreakerAnswer;
+            }
+        }
+        else if (CurrentAnswer.HasValue)
+        {
+            QuestionAnswers[ActiveQuestion.Id] = CurrentAnswer;
+        }
+
+        // Save to the database
+        SaveAnswerToDatabase();
+    }
+
+    private async Task SaveAnswerToDatabase()
+    {
+        if (CurrentParticipant == null || ActiveSprint == null || ActiveQuestion == null)
+            return;
+
+        if (SprintClosed)
+            return; // Don't save if game is closed
+
+        // Find or create participant sprint record
+        var participantSprint = await DbContext.ParticipantSprints
+            .FirstOrDefaultAsync(ps => ps.ParticipantId == CurrentParticipant.Id && ps.SprintId == ActiveSprint.Id);
+
+        if (participantSprint == null)
+        {
+            participantSprint = new Models.ParticipantSprint
+                {
+                    ParticipantId = CurrentParticipant.Id,
+                    SprintId = ActiveSprint.Id
+                };
+            DbContext.ParticipantSprints.Add(participantSprint);
+        }
+
+        // Find existing answer or create new one
+        var participantAnswer = await DbContext.ParticipantAnswers
+            .FirstOrDefaultAsync(pa => pa.ParticipantId == CurrentParticipant.Id &&
+                                     pa.QuestionId == ActiveQuestion.Id);
+
+        if (ActiveQuestion.IsTieBreaker)
+        {
+            if (participantAnswer == null)
+            {
+                participantAnswer = new Models.ParticipantAnswer
+                    {
+                        ParticipantId = CurrentParticipant.Id,
+                        QuestionId = ActiveQuestion.Id,
+                        TieBreakerText = TieBreakerAnswer
+                    };
+                DbContext.ParticipantAnswers.Add(participantAnswer);
+            }
+            else
+            {
+                participantAnswer.TieBreakerText = TieBreakerAnswer;
+            }
+        }
+        else if (CurrentAnswer.HasValue)
+        {
+            if (participantAnswer == null)
+            {
+                participantAnswer = new Models.ParticipantAnswer
+                    {
+                        ParticipantId = CurrentParticipant.Id,
+                        QuestionId = ActiveQuestion.Id,
+                        SelectedAnswerId = CurrentAnswer.Value
+                    };
+                DbContext.ParticipantAnswers.Add(participantAnswer);
+            }
+            else
+            {
+                participantAnswer.SelectedAnswerId = CurrentAnswer.Value;
+            }
+        }
+
+        await DbContext.SaveChangesAsync();
+    }
+
+    // Properties to control UI state
+    private bool IsFirstQuestion => CurrentQuestionIndex == 0;
+    private bool IsLastQuestion =>
+        ActiveSprint?.Questions != null && CurrentQuestionIndex >= ActiveSprint.Questions.Count - 1;
+    private int CurrentQuestionNumber => CurrentQuestionIndex + 1;
+    private int TotalQuestions => ActiveSprint?.Questions?.Count ?? 0;
+
+    // These methods would be called from SignalR events from the presenter
+    private async Task OnSprintClosed()
+    {
+        SprintClosed = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnSprintStarted(Models.Sprint sprint)
+    {
+        ActiveSprint = sprint;
+        CurrentQuestionIndex = 0;
+        SprintClosed = false;
+        await LoadSavedAnswers();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnQuestionChanged(int questionIndex)
+    {
+        if (ActiveSprint?.Questions != null &&
+            questionIndex >= 0 &&
+            questionIndex < ActiveSprint.Questions.Count)
+        {
+            // Save answer from current question before changing
+            SaveCurrentAnswer();
+        
+            // Update question index
+            CurrentQuestionIndex = questionIndex;
+        
+            // Clear current selections to avoid stale data
+            CurrentAnswer = null;
+            TieBreakerAnswer = string.Empty;
+        
+            // Load the question and any saved answers
+            UpdateActiveQuestion();
+        
+            // Ensure UI gets refreshed
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnTieBreakerEligibilityChanged(bool isEligible)
+    {
+        IsTieBreakerEligible = isEligible;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection != null)
+        {
+            await _hubConnection.DisposeAsync();
+        }
+    }
+
+    private async Task LoadSavedAnswers()
+    {
+        if (CurrentParticipant == null || ActiveSprint == null)
+            return;
+
+        try
+        {
+            // Clear existing cached answers
+            QuestionAnswers.Clear();
+            TieBreakerAnswers.Clear();
+
+            // Load all participant answers for this sprint
+            var questionIds = ActiveSprint.Questions.Select(q => q.Id).ToList();
+        
+            var savedAnswers = await DbContext.ParticipantAnswers
+                .Where(pa => pa.ParticipantId == CurrentParticipant.Id && 
+                             questionIds.Contains(pa.QuestionId))
+                .ToListAsync();
+
+            // Populate the dictionaries with saved answers
+            foreach (var answer in savedAnswers)
+            {
+                if (answer.SelectedAnswerId.HasValue)
+                {
+                    QuestionAnswers[answer.QuestionId] = answer.SelectedAnswerId;
+                }
+            
+                if (!string.IsNullOrEmpty(answer.TieBreakerText))
+                {
+                    TieBreakerAnswers[answer.QuestionId] = answer.TieBreakerText;
+                }
+            }
+
+            // Update the current answer based on the active question
+            UpdateActiveQuestion();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error loading saved answers: {ex.Message}");
+        }
+    }
+
+}
