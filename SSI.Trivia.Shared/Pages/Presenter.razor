@@ -93,6 +93,13 @@
                             </MudExpansionPanel>
                         }
                     }
+                    else
+                    {
+                        <MudText Typo="Typo.subtitle1" Color="Color.Secondary">
+                            No questions available.
+                        </MudText>
+                    }
+
                     @if (CurrentQuestion?.IsTieBreaker == true && ShowTieBreakerQuestion)
                     {
                         <Slide Question="CurrentQuestion" />
@@ -188,12 +195,6 @@
                         }
                     }
 
-                    else
-                    {
-                        <MudText Typo="Typo.subtitle1" Color="Color.Secondary">
-                            No questions available.
-                        </MudText>
-                    }
 
                     @if (IsLastQuestion && CurrentQuestion != null)
                     {
