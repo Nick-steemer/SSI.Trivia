@@ -1,7 +1,6 @@
-namespace SSI.Trivia.Shared.Configuration
+namespace SSI.Trivia.Shared.Configuration;
+
+public class OpenAISettings
 {
-    public class OpenAISettings
-    {
-        public string ApiKey { get; set; } = string.Empty;
-    }
+    public string ApiKey { get; set; } = string.Empty;
 }

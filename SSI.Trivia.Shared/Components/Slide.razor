@@ -1,6 +1,6 @@
 @using SSI.Trivia.Shared.Models
 
-<MudPaper Class="p-4">
+<div class="p-4">
     @if (Question == null)
     {
         <MudText Color="Color.Error">No question data available.</MudText>
@@ -39,7 +39,7 @@
             <MudImage Src="@($"data:image;base64,{Question.UploadedAfterMediaBase64}")" Alt="After Media" Class="mt-3" Style="max-width:100%;" />
         }
     }
-</MudPaper>
+</div>
 
 @code {
     [Parameter]

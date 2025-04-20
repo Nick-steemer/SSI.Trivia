@@ -1,0 +1,101 @@
+@using SSI.Trivia.Shared.Models
+@inject NavigationManager NavigationManager
+
+<MudCard Elevation="0" Class="pa-4">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h5">Select a Trivia Sprint</MudText>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudText Typo="Typo.body1" Class="mb-4">
+            Choose a trivia sprint to present or create a new one from the Admin page.
+        </MudText>
+        
+        <MudAutocomplete T="Sprint" Label="Sprint Name"
+                         @bind-Value="selectedSprint"
+                         ToStringFunc="(s) => s?.Name"
+                         SearchFunc="SearchSprints"
+                         Variant="Variant.Outlined"
+                         Margin="Margin.Dense"
+                         AdornmentIcon="@Icons.Material.Filled.Search"
+                         AdornmentColor="Color.Primary"
+                         Class="mt-3 mb-4" />
+                         
+        @if (Sprints.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="my-4">
+                No trivia sprints available. Create one from the Admin page first.
+            </MudAlert>
+        }
+        else
+        {
+            <MudSimpleTable Hover="true" Striped="true" Class="my-4">
+                <thead>
+                    <tr>
+                        <th>Sprint</th>
+                        <th>Questions</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var sprint in Sprints.OrderByDescending(s => s.Id).Take(5))
+                    {
+                        <tr>
+                            <td>@sprint.Name</td>
+                            <td>@sprint.Questions.Count</td>
+                            <td>
+                                <MudButton Variant="Variant.Filled" 
+                                           Color="Color.Primary" 
+                                           Size="Size.Small"
+                                           OnClick="@(() => { selectedSprint = sprint; SelectSprint(); })">
+                                    Select
+                                </MudButton>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    </MudCardContent>
+    <MudCardActions>
+        <MudSpacer />
+        <MudButton Variant="Variant.Text" 
+                   Color="Color.Secondary"
+                   Href="/Admin">
+            Create New Sprint
+        </MudButton>
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary"
+                   Disabled="@(selectedSprint == null)"
+                   OnClick="SelectSprint">
+            Start Presenting
+        </MudButton>
+    </MudCardActions>
+</MudCard>
+
+@code {
+    [Parameter] public List<Sprint> Sprints { get; set; } = new();
+    [Parameter] public EventCallback<Sprint> OnSprintSelected { get; set; }
+    
+    private Sprint? selectedSprint;
+
+    private async Task<IEnumerable<Sprint>> SearchSprints(string value, CancellationToken token)
+    {
+        if (!Sprints.Any())
+            return Enumerable.Empty<Sprint>();
+
+        if (string.IsNullOrEmpty(value))
+            return Sprints;
+            
+        return Sprints.Where(g => g.Name.Contains(value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task SelectSprint()
+    {
+        if (selectedSprint != null)
+        {
+            await OnSprintSelected.InvokeAsync(selectedSprint);
+        }
+    }
+}

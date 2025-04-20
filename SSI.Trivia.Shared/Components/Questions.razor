@@ -1,0 +1,100 @@
+@using SSI.Trivia.Shared.Models
+@using SSI.Trivia.Shared.Components
+
+<MudGrid>
+    <MudItem xs="12">
+        <MudPaper Elevation="0" Class="pa-4 mb-4">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.h5">@Sprint?.Name</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        @if(!(CurrentQuestion?.IsTieBreaker ?? false))
+                        {
+                            @:Question @CurrentQuestionNumber of @TotalQuestions
+                        }
+                        else
+                        {
+                            @:Tie Breaker
+                        }
+                    </MudText>
+                </MudItem>
+                <MudItem xs="12" md="6" Class="d-flex justify-end">
+                    <MudButton Variant="@(IsSprintActive ? Variant.Filled : Variant.Outlined)"
+                               Color="@(IsSprintActive ? Color.Error : Color.Success)"
+                               StartIcon="@(IsSprintActive ? Icons.Material.Filled.Stop : Icons.Material.Filled.PlayArrow)"
+                               OnClick="@OnToggleSprintState">
+                        @(IsSprintActive ? "End Trivia" : "Start Trivia")
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    </MudItem>
+
+    @if (CurrentQuestion != null && (!CurrentQuestion.IsTieBreaker || ShowTieBreakerQuestion))
+    {
+        <MudItem xs="12">
+            <MudPaper Elevation="1" Class="pa-4 mb-4">
+                <Slide Question="CurrentQuestion" />
+            </MudPaper>
+        </MudItem>
+
+        @if (CurrentQuestion.IsTieBreaker && !TieBreakerEligibilitySet)
+        {
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Info" Class="mb-4">
+                    <MudText Typo="Typo.body1">Checking for tied participants...</MudText>
+                </MudAlert>
+            </MudItem>
+        }
+    }
+    else if (!HasMultipleChoiceQuestions)
+    {
+        <MudItem xs="12">
+            <MudAlert Severity="Severity.Info">No questions available.</MudAlert>
+        </MudItem>
+    }
+
+    <MudItem xs="12">
+        <MudPaper Elevation="0" Class="d-flex justify-space-between align-center pa-2">
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       OnClick="@OnPreviousQuestion"
+                       Disabled="@IsFirstQuestion"
+                       StartIcon="@Icons.Material.Filled.ChevronLeft">
+                Previous
+            </MudButton>
+
+            <MudProgressLinear Value="@(TotalQuestions <= 1 ? 100 : ((float)CurrentQuestionIndex / (TotalQuestions - 1)) * 100)"
+                               Color="Color.Primary"
+                               Class="mx-4"
+                               Style="min-width: 200px;" />
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       OnClick="@OnNextQuestion"
+                       Disabled="@IsLastQuestion"
+                       EndIcon="@Icons.Material.Filled.ChevronRight">
+                Next
+            </MudButton>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter] public Sprint? Sprint { get; set; }
+    [Parameter] public Question? CurrentQuestion { get; set; }
+    [Parameter] public int CurrentQuestionIndex { get; set; }
+    [Parameter] public int TotalQuestions { get; set; }
+    [Parameter] public bool IsFirstQuestion { get; set; }
+    [Parameter] public bool IsLastQuestion { get; set; }
+    [Parameter] public bool IsSprintActive { get; set; }
+    [Parameter] public bool ShowTieBreakerQuestion { get; set; }
+    [Parameter] public bool TieBreakerEligibilitySet { get; set; }
+    [Parameter] public EventCallback OnPreviousQuestion { get; set; }
+    [Parameter] public EventCallback OnNextQuestion { get; set; }
+    [Parameter] public EventCallback OnToggleSprintState { get; set; }
+    [Parameter] public EventCallback OnSetupTieBreaker { get; set; }
+    [Parameter] public int CurrentQuestionNumber { get; set; }
+
+    private bool HasMultipleChoiceQuestions => Sprint?.Questions?.Any(q => !q.IsTieBreaker) ?? false;
+}

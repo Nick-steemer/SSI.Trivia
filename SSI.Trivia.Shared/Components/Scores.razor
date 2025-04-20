@@ -1,0 +1,112 @@
+@using SSI.Trivia.Shared.Models
+
+<MudCard Elevation="1">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h5">Participant Scores</MudText>
+        </CardHeaderContent>
+        <CardHeaderActions>
+            <MudIconButton Icon="@Icons.Material.Filled.Refresh" 
+                          Color="Color.Default" 
+                          OnClick="@OnLoadScores" />
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        @if (IsLoading)
+        {
+            <MudProgressCircular Color="Color.Primary" 
+                               Indeterminate="true" 
+                               Class="ma-4 d-block mx-auto" />
+        }
+        else if (ParticipantScores.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info">
+                No participant scores available for this sprint.
+            </MudAlert>
+        }
+        else
+        {
+            <MudTextField @bind-Value="searchString" 
+                         Placeholder="Search by name" 
+                         Adornment="Adornment.Start"
+                         AdornmentIcon="@Icons.Material.Filled.Search"
+                         Class="mt-0 mb-4"
+                         @oninput="@((e) => HandleSearch(e.Value?.ToString() ?? ""))" />
+                         
+            <MudTable Items="@FilteredScores" 
+                     Dense="true"
+                     Hover="true"
+                     Striped="true"
+                     Breakpoint="Breakpoint.Sm"
+                     LoadingProgressColor="Color.Secondary">
+                <HeaderContent>
+                    <MudTh Style="width: 60px">Rank</MudTh>
+                    <MudTh>Participant</MudTh>
+                    <MudTh Style="text-align: center">Score</MudTh>
+                    <MudTh>Correct</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>
+                        @if (context.Rank <= 3)
+                        {
+                            <MudIcon Icon="@(context.Rank == 1 ? Icons.Material.Filled.EmojiEvents :
+                                           context.Rank == 2 ? Icons.Material.Filled.WorkspacePremium :
+                                           Icons.Material.Filled.MilitaryTech)"
+                                    Color="@(context.Rank switch
+                                            {
+                                                1 => Color.Warning,
+                                                2 => Color.Tertiary,
+                                                _ => Color.Tertiary
+                                            })"
+                                    Size="Size.Small"
+                                    Class="mr-1" />
+                        }
+                        @context.Rank
+                    </MudTd>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd Style="text-align: center">
+                        <MudChip T="string" Size="Size.Small" 
+                                Color="@(context.Rank <= 3 ? Color.Primary : Color.Default)">
+                            @context.Score
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>@context.CorrectAnswers / @context.TotalQuestions</MudTd>
+                </RowTemplate>
+                <PagerContent>
+                    <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100 }" />
+                </PagerContent>
+            </MudTable>
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter] public Sprint? Sprint { get; set; }
+    [Parameter] public List<ParticipantScore> ParticipantScores { get; set; } = new();
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public string SearchString { get; set; } = "";
+    [Parameter] public EventCallback<string> OnSearchStringChanged { get; set; }
+    [Parameter] public EventCallback OnLoadScores { get; set; }
+    
+    private string searchString = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await OnLoadScores.InvokeAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        searchString = SearchString;
+    }
+    
+    private async Task HandleSearch(string value)
+    {
+        searchString = value;
+        await OnSearchStringChanged.InvokeAsync(value);
+    }
+
+    private IEnumerable<ParticipantScore> FilteredScores => 
+        ParticipantScores.Where(x => string.IsNullOrWhiteSpace(searchString) || 
+                         x.Name.Contains(searchString, StringComparison.OrdinalIgnoreCase));
+}

@@ -27,7 +27,7 @@
                 }
 
                 <MudAutocomplete T="Models.Participant" Label="Your Name"
-                                 @bind-Value="CurrentParticipant"
+                                 Value="CurrentParticipant"
                                  ToStringFunc="@(p => p?.Name ?? string.Empty)"
                                  SearchFunc="@SearchParticipants"
                                  ResetValueOnEmptyText="true"
@@ -35,6 +35,7 @@
                                  Variant="Variant.Outlined"
                                  Clearable="true"
                                  CoerceValue="false"
+                                 ValueChanged="@OnParticipantSelected"
                                  Class="mb-2" />
 
                 <MudTextField @bind-Value="NewParticipantName" Label="Or enter a new name"
@@ -596,5 +597,15 @@
     {
         TieBreakerSubmitted = true;
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnParticipantSelected(Models.Participant? participant)
+    {
+        if (participant != null)
+        {
+            // Auto-register the user when they select a name from the list
+            CurrentParticipant = participant;
+            await RegisterParticipant();
+        }
     }
 }

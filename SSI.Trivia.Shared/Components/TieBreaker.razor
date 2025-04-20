@@ -1,0 +1,143 @@
+﻿@using SSI.Trivia.Shared.Models
+@using SSI.Trivia.Shared.Components
+
+<MudGrid>
+    <MudItem xs="12">
+        <MudCard Elevation="1" Class="mb-4">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h5">Tie-Breaker Question</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (Question != null)
+                {
+                    <Slide Question="Question" />
+                }
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    
+    <MudItem xs="12" md="6">
+        <MudCard Elevation="1">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h5">Submission Status</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (AllAnswersSubmitted)
+                {
+                    <MudAlert Severity="Severity.Success" Class="mb-4">
+                        All eligible participants have submitted their answers
+                    </MudAlert>
+                    
+                    <MudTextField @bind-Value="targetValue"
+                                 Label="Correct Answer"
+                                 Variant="Variant.Outlined"
+                                 InputType="InputType.Number"
+                                 Adornment="Adornment.End"
+                                 AdornmentIcon="@Icons.Material.Filled.Check"
+                                 OnAdornmentClick="@OnDetermineWinner"
+                                 @oninput="@((e) => TargetValueChanged(e.Value?.ToString() ?? ""))"
+                                 Class="mb-3" />
+                                 
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              FullWidth="true"
+                              OnClick="@OnDetermineWinner"
+                              Disabled="string.IsNullOrWhiteSpace(targetValue)">
+                        Determine Winner
+                    </MudButton>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.HourglassBottom">
+                        Waiting for all eligible participants to submit their tie-breaker answers
+                    </MudAlert>
+                    
+                    <MudProgressCircular Color="Color.Secondary" 
+                                       Indeterminate="true" 
+                                       Class="mt-4 d-block mx-auto" />
+                }
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    
+    <MudItem xs="12" md="6">
+        @if (ShowWinnerSection)
+        {
+            <MudCard Elevation="1" Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h5">Tie-Breaker Results</MudText>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        <MudChip T="string" Icon="@Icons.Material.Filled.EmojiEvents" 
+                                Color="Color.Warning">
+                            Winner Determined
+                        </MudChip>
+                    </CardHeaderActions>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (TieBreakerResults.Any())
+                    {
+                        <MudPaper Elevation="0" Class="pa-4 mb-4" Style="background-color: #fffde7; border-left: 4px solid #ffd600;">
+                            <MudText Typo="Typo.h5" Color="Color.Warning">
+                                🏆 Winner: @TieBreakerResults.First().ParticipantName
+                            </MudText>
+                            <MudText Typo="Typo.body1" Class="mt-1">
+                                Answer: @TieBreakerResults.First().Answer (Closest without going over)
+                            </MudText>
+                        </MudPaper>
+
+                        <MudDivider Class="my-3" />
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">All Answers</MudText>
+
+                        <MudList T="TieBreakerResult" Dense="true">
+                            @for (int i = 0; i < TieBreakerResults.Count; i++)
+                            {
+                                var result = TieBreakerResults[i];
+                                <MudListItem Icon="@(i == 0 ? Icons.Material.Filled.Star : Icons.Material.Filled.Person)">
+                                    <MudText Typo="Typo.body1" Color="@(i == 0 ? Color.Primary : Color.Default)">
+                                        @(i + 1). @result.ParticipantName: @result.Answer
+                                    </MudText>
+                                </MudListItem>
+                            }
+                        </MudList>
+
+                        <MudDivider Class="my-3" />
+                        <MudText Typo="Typo.body2">Correct Answer: @TargetValue</MudText>
+                    }
+                    else
+                    {
+                        <MudText>No valid tie-breaker answers were submitted.</MudText>
+                    }
+                </MudCardContent>
+            </MudCard>
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter] public Question? Question { get; set; }
+    [Parameter] public bool AllAnswersSubmitted { get; set; }
+    [Parameter] public string TargetValue { get; set; } = "";
+    [Parameter] public bool ShowWinnerSection { get; set; }
+    [Parameter] public List<TieBreakerResult> TieBreakerResults { get; set; } = new();
+    [Parameter] public EventCallback OnDetermineWinner { get; set; }
+    [Parameter] public EventCallback<string> OnTargetValueChanged { get; set; }
+    
+    private string targetValue = "";
+
+    protected override void OnParametersSet()
+    {
+        targetValue = TargetValue;
+    }
+    
+    private async Task TargetValueChanged(string value)
+    {
+        targetValue = value;
+        await OnTargetValueChanged.InvokeAsync(value);
+    }
+}

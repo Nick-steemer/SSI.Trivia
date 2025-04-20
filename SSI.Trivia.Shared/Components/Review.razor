@@ -1,0 +1,196 @@
+@using SSI.Trivia.Shared.Models
+
+<MudCard Elevation="1" Class="mb-4">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h5">Sprint Review: @Sprint?.Name</MudText>
+        </CardHeaderContent>
+        <CardHeaderActions>
+            <MudToggleIconButton Toggled="@ShowCorrectAnswers"
+                                ToggledChanged="@((val) => OnToggleCorrectAnswers.InvokeAsync())"
+                                Icon="@Icons.Material.Filled.VisibilityOff"
+                                Color="Color.Default"
+                                Title="Show Correct Answers"
+                                ToggledIcon="@Icons.Material.Filled.Visibility"
+                                ToggledColor="Color.Primary"
+                                ToggledTitle="Hide Correct Answers" />
+                                
+            <MudToggleIconButton Toggled="@ShowParticipantScores"
+                                ToggledChanged="@((val) => OnToggleParticipantScores.InvokeAsync())"
+                                Icon="@Icons.Material.Filled.Leaderboard"
+                                Color="Color.Default"
+                                Title="Show Scores"
+                                ToggledIcon="@Icons.Material.Filled.Leaderboard"
+                                ToggledColor="Color.Secondary"
+                                ToggledTitle="Hide Scores" />
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        @if (!ShowParticipantScores)
+        {
+            <MudTabs Rounded="true" PanelClass="pa-3" ApplyEffectsToContainer="true" Elevation="0">
+                @foreach (var question in Sprint?.Questions.Where(q => !q.IsTieBreaker || ShowTieBreakerQuestion) ?? Enumerable.Empty<Question>())
+                {
+                    var index = Sprint?.Questions.IndexOf(question) ?? 0;
+                    <MudTabPanel Text="@($"Q{index + 1}")">
+                        <MudCard Elevation="0">
+                            <MudCardHeader>
+                                <CardHeaderContent>
+                                    <MudText Typo="Typo.h6">Question #@(index + 1)</MudText>
+                                    @if (question.IsTieBreaker)
+                                    {
+                                        <MudChip T="string" Color="Color.Warning" Size="Size.Small" Class="ml-2">
+                                            Tie Breaker
+                                        </MudChip>
+                                    }
+                                </CardHeaderContent>
+                            </MudCardHeader>
+                            <MudCardContent>
+                                <MudText Typo="Typo.body1" Class="mb-3">@question.QuestionText</MudText>
+
+                                @if (!string.IsNullOrEmpty(question.MediaUrl) || !string.IsNullOrEmpty(question.UploadedMediaBase64))
+                                {
+                                    <MudImage Src="@(string.IsNullOrEmpty(question.MediaUrl) ?
+                                            $"data:image;base64,{question.UploadedMediaBase64}" : question.MediaUrl)"
+                                              Alt="Question Media" Class="mb-3" Style="max-width:100%;" />
+                                }
+
+                                @if (!question.IsTieBreaker)
+                                {
+                                    <MudList T="Answer" Dense="true">
+                                        @foreach (var answer in question.Answers)
+                                        {
+                                            <MudListItem>
+                                                <div class="d-flex align-center">
+                                                    @if (ShowCorrectAnswers && answer.IsCorrect)
+                                                    {
+                                                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle"
+                                                                Color="Color.Success" Class="mr-2" />
+                                                    }
+                                                    <MudText Typo="Typo.body1"
+                                                            Color="@(ShowCorrectAnswers && answer.IsCorrect ?
+                                                                    Color.Success : Color.Default)">
+                                                        @answer.Text
+                                                    </MudText>
+                                                </div>
+                                            </MudListItem>
+                                        }
+                                    </MudList>
+                                }
+                            </MudCardContent>
+                        </MudCard>
+                    </MudTabPanel>
+                }
+            </MudTabs>
+        }
+
+        @if (ShowParticipantScores)
+        {
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h5" Class="mb-4">Participant Scores</MudText>
+
+            @if (ParticipantScores.Count == 0 && IsLoading)
+            {
+                <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto" />
+            }
+            else if (ParticipantScores.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info">
+                    No participant scores available for this sprint.
+                </MudAlert>
+            }
+            else
+            {
+                <MudTextField @bind-Value="searchString" 
+                             Placeholder="Search participants" 
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Search"
+                             Class="mt-0 mb-4"
+                             @oninput="@((e) => HandleSearch(e.Value?.ToString() ?? ""))" />
+                             
+                <MudTable Items="@FilteredScores" 
+                         Dense="true"
+                         Hover="true"
+                         Striped="true"
+                         Breakpoint="Breakpoint.Sm"
+                         LoadingProgressColor="Color.Secondary">
+                    <HeaderContent>
+                        <MudTh Style="width: 60px">Rank</MudTh>
+                        <MudTh>Participant</MudTh>
+                        <MudTh Style="text-align: center">Score</MudTh>
+                        <MudTh>Correct</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>
+                            @if (context.Rank <= 3)
+                            {
+                                <MudIcon Icon="@(context.Rank == 1 ? Icons.Material.Filled.EmojiEvents :
+                                              context.Rank == 2 ? Icons.Material.Filled.WorkspacePremium :
+                                              Icons.Material.Filled.MilitaryTech)"
+                                        Color="@(context.Rank switch
+                                                {
+                                                    1 => Color.Warning,
+                                                    2 => Color.Tertiary,
+                                                    _ => Color.Tertiary
+                                                })"
+                                        Size="Size.Small"
+                                        Class="mr-1" />
+                            }
+                            @context.Rank
+                        </MudTd>
+                        <MudTd>@context.Name</MudTd>
+                        <MudTd Style="text-align: center">
+                            <MudChip T="string" Size="Size.Small" 
+                                    Color="@(context.Rank <= 3 ? Color.Primary : Color.Default)">
+                                @context.Score
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>@context.CorrectAnswers / @context.TotalQuestions</MudTd>
+                    </RowTemplate>
+                    <PagerContent>
+                        <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100 }" />
+                    </PagerContent>
+                </MudTable>
+            }
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter] public Sprint? Sprint { get; set; }
+    [Parameter] public bool ShowCorrectAnswers { get; set; }
+    [Parameter] public bool ShowParticipantScores { get; set; }
+    [Parameter] public bool ShowTieBreakerQuestion { get; set; }
+    [Parameter] public EventCallback OnToggleCorrectAnswers { get; set; }
+    [Parameter] public EventCallback OnToggleParticipantScores { get; set; }
+    [Parameter] public EventCallback OnLoadScores { get; set; }
+    [Parameter] public List<ParticipantScore> ParticipantScores { get; set; } = new();
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public string SearchString { get; set; } = "";
+    [Parameter] public EventCallback<string> OnSearchStringChanged { get; set; }
+    
+    private string searchString = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (ShowParticipantScores && ParticipantScores.Count == 0)
+        {
+            await OnLoadScores.InvokeAsync();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        searchString = SearchString;
+    }
+    
+    private async Task HandleSearch(string value)
+    {
+        searchString = value;
+        await OnSearchStringChanged.InvokeAsync(value);
+    }
+
+    private IEnumerable<ParticipantScore> FilteredScores => 
+        ParticipantScores.Where(x => string.IsNullOrWhiteSpace(searchString) || 
+                                   x.Name.Contains(searchString, StringComparison.OrdinalIgnoreCase));
+}

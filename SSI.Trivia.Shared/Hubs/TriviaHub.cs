@@ -14,6 +14,8 @@ public class TriviaHub : Hub
     // Track tie-breaker eligible participants and their submission status
     private static readonly ConcurrentDictionary<int, bool> _tieBreakerEligibleParticipants = new();
     private static readonly ConcurrentDictionary<int, string> _tieBreakerAnswers = new();
+    // Track participant scores for the current sprint
+    private static readonly ConcurrentDictionary<int, int> _participantScores = new();
 
     // Start a sprint and send it to all participants
     public async Task StartSprint(Sprint sprint)
@@ -25,6 +27,8 @@ public class TriviaHub : Hub
         // Clear tie-breaker tracking data when a new sprint starts
         _tieBreakerEligibleParticipants.Clear();
         _tieBreakerAnswers.Clear();
+        // Clear participant scores when a new sprint starts
+        _participantScores.Clear();
 
         await Clients.All.SendAsync("SprintStarted", sprint);
     }
@@ -41,6 +45,28 @@ public class TriviaHub : Hub
     {
         _sprintClosed = true;
         await Clients.All.SendAsync("SprintClosed");
+
+        // Check for ties when closing the sprint
+        var tiedParticipants = await CheckForTies();
+        if (tiedParticipants.Count > 1)
+        {
+            // Notify presenters about the tie
+            await Clients.Group("Presenters").SendAsync("TieDetected", tiedParticipants);
+
+            // Find tie-breaker question if it exists
+            var tieBreakerQuestionIndex = FindTieBreakerQuestionIndex();
+            if (tieBreakerQuestionIndex >= 0)
+            {
+                // Navigate to tie-breaker question
+                await NavigateToQuestion(tieBreakerQuestionIndex);
+
+                // Set up tie-breaker eligibility for tied participants
+                foreach (var participantId in tiedParticipants)
+                {
+                    await SetTieBreakerEligibilityForParticipant(participantId, true);
+                }
+            }
+        }
     }
 
     // Set tie-breaker eligibility for specific participants
@@ -136,5 +162,59 @@ public class TriviaHub : Hub
 
         // Sort by difference (smallest difference first, but values over target are placed last)
         return results.OrderBy(r => r.Difference).ToList();
+    }
+
+    // Record participant score for the current question
+    public async Task RecordParticipantScore(int participantId, int score)
+    {
+        // Add to participant's score
+        _participantScores.AddOrUpdate(
+            participantId,
+            score,  // Initial value if key doesn't exist
+            (_, existingScore) => existingScore + score  // Update function if key exists
+        );
+
+        // Notify presenters about the score update
+        await Clients.Group("Presenters").SendAsync("ParticipantScoreUpdated", participantId, _participantScores[participantId]);
+    }
+
+    // Get participants with highest score
+    public async Task<List<int>> CheckForTies()
+    {
+        // If no scores recorded, return empty list
+        if (!_participantScores.Any())
+        {
+            return new List<int>();
+        }
+
+        // Find the highest score
+        int highestScore = _participantScores.Values.Max();
+
+        // Find all participants with the highest score
+        var tiedParticipants = _participantScores
+            .Where(p => p.Value == highestScore)
+            .Select(p => p.Key)
+            .ToList();
+
+        return tiedParticipants;
+    }
+
+    // Find index of tie breaker question if it exists
+    private int FindTieBreakerQuestionIndex()
+    {
+        if (_currentSprint?.Questions == null)
+        {
+            return -1;
+        }
+
+        for (int i = 0; i < _currentSprint.Questions.Count; i++)
+        {
+            if (_currentSprint.Questions[i].IsTieBreaker)
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 }

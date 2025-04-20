@@ -1,6 +1,6 @@
 ﻿namespace SSI.Trivia.Shared.Models;
 
-public class ParticipantScoreViewModel
+public class ParticipantScore
 {
     public int ParticipantId { get; set; }
     public string Name { get; set; } = string.Empty;
